@@ -1,10 +1,17 @@
-from flask import Flask
-from api.mash import mash_bp
-from api.soot_connector import soot_bp
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from mash.controller import router as mash_router 
+from soot.routes import router as soot_router
 
-app = Flask(__name__)
-app.register_blueprint(mash_bp, url_prefix='/mash')
-app.register_blueprint(soot_bp, url_prefix='/soot')
+app = FastAPI()
 
-if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],  
+    allow_headers=["*"],  
+)
+
+app.include_router(mash_router, prefix="/api/mash", tags=["Mash"])
+app.include_router(soot_router, prefix="/api/soot")
