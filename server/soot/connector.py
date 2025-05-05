@@ -24,3 +24,25 @@ def fetch_user_spaces():
     """
     response = requests.post(SOOT_API_URL, json={"query": query}, headers=HEADERS)
     return response.json()
+
+def fetch_all_items_from_spaces():
+    query = """
+    query {
+      viewer {
+        spaces {
+          id
+          items {
+            edges {
+              node {
+                id
+                staticUrl
+                metadata
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    response = requests.post(SOOT_API_URL, json={"query": query}, headers=HEADERS)
+    return response.json()
