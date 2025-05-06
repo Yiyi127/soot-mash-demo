@@ -1,86 +1,65 @@
 const SOOT_MIME_KEYWORD = 'soot-json';
 
 function parseSootClipboardData(jsonString) {
-  console.log('------------------- RAW JSON START -------------------');
-  console.log(jsonString);
-  console.log('------------------- RAW JSON END ---------------------');
-
   try {
     const parsed = JSON.parse(jsonString);
-    if (!parsed || !Array.isArray(parsed.spaces)) {
-      throw new Error('Missing "spaces" array');
-    }
+    if (!parsed || !Array.isArray(parsed.spaces)) throw new Error('Missing "spaces" array');
     return { ok: true, value: parsed };
   } catch (err) {
-    console.warn('[SOOT] Failed to parse JSON:', err.message);
     return { ok: false, error: 'Malformed clipboard JSON' };
   }
 }
 
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(',')[1]); // remove 'data:image/png;base64,'
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 async function readSootClipboardData() {
   try {
-    console.log('[SOOT] Button clicked, starting clipboard read');
-
-    if (!navigator.clipboard || !navigator.clipboard.read) {
-      alert('Your browser does not support navigator.clipboard.read().');
-      return;
-    }
-
     const items = await navigator.clipboard.read();
-    console.log(`[SOOT] Clipboard read returned ${items.length} item(s)`);
-
     const output = document.getElementById('output');
     output.innerHTML = '';
 
     for (const item of items) {
-      console.log('[SOOT] Clipboard item types:', item.types);
-
       const matchedType = item.types.find(type =>
         type.toLowerCase().includes(SOOT_MIME_KEYWORD)
       );
 
-      if (matchedType) {
-        console.log(`[SOOT] Found matching custom type: "${matchedType}"`);
+      let structuredJSON = null;
 
+      if (matchedType) {
         const blob = await item.getType(matchedType);
         const jsonText = await blob.text();
         const result = parseSootClipboardData(jsonText);
-
-        if (!result.ok) {
-          alert('Clipboard format is invalid.');
-          continue;
-        }
-
-        const parsed = result.value;
-
-        const structuredData = parsed.spaces.map(space => ({
-          spaceId: space.spaceId,
-          operation: space.operation,
-          entries: space.entries.map(entry => ({
-            instanceId: entry.instanceId,
-            imageURL: entry.imageURL,
-            filename: entry.filename || null
-          }))
-        }));
-
-        console.log('[SOOT] 📦 Structured Clipboard Data:', structuredData);
+        if (result.ok) structuredJSON = result.value;
       }
 
       if (item.types.includes('image/png')) {
         const blob = await item.getType('image/png');
-        const url = URL.createObjectURL(blob);
+        const base64Image = await blobToBase64(blob);
+
+        const compositePayload = {
+          metadata: structuredJSON,
+          imageBase64: base64Image
+        };
+
+        console.log('[SOOT] 🧩 Gemini-Ready Payload:', compositePayload);
+
         const img = document.createElement('img');
-        img.src = url;
+        img.src = `data:image/png;base64,${base64Image}`;
         img.style.width = '200px';
         img.style.margin = '10px';
-        img.style.border = '1px dashed #aaa';
+        img.style.border = '1px solid #0f0';
         output.appendChild(img);
-        console.log('[SOOT] ✅ image/png content rendered.');
       }
     }
   } catch (err) {
     console.error('[SOOT] Clipboard read failed:', err);
-    alert('Clipboard read failed: ' + err.message);
   }
 }
 
