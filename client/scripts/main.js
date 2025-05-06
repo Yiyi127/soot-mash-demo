@@ -7,11 +7,9 @@ function parseSootClipboardData(jsonString) {
 
   try {
     const parsed = JSON.parse(jsonString);
-
     if (!parsed || !Array.isArray(parsed.spaces)) {
       throw new Error('Missing "spaces" array');
     }
-
     return { ok: true, value: parsed };
   } catch (err) {
     console.warn('[SOOT] Failed to parse JSON:', err.message);
@@ -46,8 +44,6 @@ async function readSootClipboardData() {
 
         const blob = await item.getType(matchedType);
         const jsonText = await blob.text();
-
-        // 👇 打印 raw JSON before parsing
         const result = parseSootClipboardData(jsonText);
 
         if (!result.ok) {
@@ -56,38 +52,22 @@ async function readSootClipboardData() {
         }
 
         const parsed = result.value;
-        const imageURLs = parsed.spaces.flatMap(space =>
-          space.entries.map(entry => entry.imageURL)
-        );
 
-        console.log('[SOOT] Extracted image URLs:', imageURLs);
+        const structuredData = parsed.spaces.map(space => ({
+          spaceId: space.spaceId,
+          operation: space.operation,
+          entries: space.entries.map(entry => ({
+            instanceId: entry.instanceId,
+            imageURL: entry.imageURL,
+            filename: entry.filename || null
+          }))
+        }));
 
-        imageURLs.forEach(url => {
-          const img = document.createElement('img');
-          img.src = url;
-          img.style.width = '200px';
-          img.style.margin = '10px';
-          img.style.border = '1px solid #ccc';
-
-          img.onerror = () => {
-            console.warn(`[SOOT] Image failed to load: ${url}`);
-            const warn = document.createElement('div');
-            warn.innerText = `❌ 404 Image: ${url}`;
-            warn.style.color = 'red';
-            warn.style.fontSize = '12px';
-            warn.style.marginBottom = '10px';
-            output.appendChild(warn);
-          };
-
-          img.onload = () => {
-            console.log(`[SOOT] ✅ Image loaded: ${url}`);
-          };
-
-          output.appendChild(img);
-        });
+        // ✅ 打印到控制台，但不展示图片
+        console.log('[SOOT] 📦 Structured Clipboard Data:', structuredData);
       }
 
-      // ✅ 加载剪贴板原始 image/png（辅助人工确认）
+      // ✅ 仅展示 image/png 图片（真实图像）
       if (item.types.includes('image/png')) {
         const blob = await item.getType('image/png');
         const url = URL.createObjectURL(blob);
@@ -97,7 +77,7 @@ async function readSootClipboardData() {
         img.style.margin = '10px';
         img.style.border = '1px dashed #aaa';
         output.appendChild(img);
-        console.log('[SOOT] image/png content rendered.');
+        console.log('[SOOT] ✅ image/png content rendered.');
       }
     }
   } catch (err) {
