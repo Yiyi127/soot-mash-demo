@@ -1,6 +1,7 @@
 import os
 import requests
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
@@ -9,15 +10,17 @@ SOOT_ACCESS_TOKEN = os.getenv("SOOT_ACCESS_TOKEN")
 
 HEADERS = {
     "Authorization": f"Bearer {SOOT_ACCESS_TOKEN}",
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
 }
 
-def fetch_user_spaces():
+
+def get_user_spaces():
     query = """
     query {
       viewer {
         spaces {
           id
+          displayName
         }
       }
     }
@@ -25,24 +28,28 @@ def fetch_user_spaces():
     response = requests.post(SOOT_API_URL, json={"query": query}, headers=HEADERS)
     return response.json()
 
-def fetch_all_items_from_spaces():
-    query = """
-    query {
-      viewer {
-        spaces {
-          id
-          items {
-            edges {
-              node {
-                id
-                staticUrl
-                metadata
-              }
-            }
-          }
-        }
-      }
-    }
+
+def get_space_items(space_id: str):
+    query = f"""
+    query {{
+      getSpaceById(request: {{ id: "{space_id}" }}) {{
+        ... on GetSpaceByIdResult {{
+          space {{
+            publications {{
+              edges {{
+                node {{
+                  id
+                }}
+              }}
+            }}
+          }}
+        }}
+      }}
+    }}
     """
     response = requests.post(SOOT_API_URL, json={"query": query}, headers=HEADERS)
-    return response.json()
+    data = response.json()
+    print("GraphQL response:")
+    print(json.dumps(data, indent=2))
+    return data
+
