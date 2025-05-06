@@ -1,6 +1,6 @@
 const SOOT_MIME_KEYWORD = 'soot-json';
-const BASE_URL_PREFIX = 'https://static.soot.com/r/';
-const BEARER_TOKEN = 'Bearer ' + (import.meta.env?.VITE_SOOT_ACCESS_TOKEN ?? '');
+
+const MASH_SERVER_URL = import.meta.env?.VITE_MASH_SERVER_URL;
 
 function parseSootClipboardData(jsonString) {
   try {
@@ -20,7 +20,6 @@ function blobToBase64(blob) {
     reader.readAsDataURL(blob);
   });
 }
-
 
 export async function processSootClipboard() {
   try {
@@ -79,6 +78,22 @@ export async function processSootClipboard() {
     }
 
     console.log('[SOOT] ✅ Structured Payloads Ready:', payloads);
+
+    try {
+      const res = await fetch(`${MASH_SERVER_URL}/mash/process-entries`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payloads.map(p => p.metadata))
+      });
+
+      const data = await res.json();
+      console.log('[SOOT] ✅ Backend responded:', data);
+    } catch (sendErr) {
+      console.error('[SOOT] ❌ Failed to send to backend:', sendErr);
+    }
+
     return payloads;
 
   } catch (err) {
