@@ -63,11 +63,9 @@ async function readSootClipboardData() {
           }))
         }));
 
-        // ✅ 打印到控制台，但不展示图片
         console.log('[SOOT] 📦 Structured Clipboard Data:', structuredData);
       }
 
-      // ✅ 仅展示 image/png 图片（真实图像）
       if (item.types.includes('image/png')) {
         const blob = await item.getType('image/png');
         const url = URL.createObjectURL(blob);
