@@ -53,3 +53,26 @@ def get_space_items(space_id: str):
     print(json.dumps(data, indent=2))
     return data
 
+def get_publication_snapshot_url(publication_id: str):
+    query = f"""
+    query {{
+      getSpacePublicationById(request: {{ id: "{publication_id}" }}) {{
+        ... on GetSpacePublicationByIdResult {{
+          spacePublication {{
+            id
+            snapshotUrl
+          }}
+        }}
+      }}
+    }}
+    """
+    response = requests.post(SOOT_API_URL, json={"query": query}, headers=HEADERS)
+    data = response.json()
+    print("Snapshot URL response:")
+    print(json.dumps(data, indent=2))
+
+    try:
+        url = data["data"]["getSpacePublicationById"]["spacePublication"]["snapshotUrl"]
+        return {"publication_id": publication_id, "snapshot_url": url}
+    except Exception as e:
+        return {"error": "Failed to extract snapshot URL", "details": str(e), "raw": data}
