@@ -1,8 +1,11 @@
 const SOOT_MIME_KEYWORD = 'soot-json';
 
 function parseSootClipboardData(jsonString) {
+  console.log('------------------- RAW JSON START -------------------');
+  console.log(jsonString);
+  console.log('------------------- RAW JSON END ---------------------');
+
   try {
-    console.log('[SOOT] Raw JSON from clipboard:', jsonString);
     const parsed = JSON.parse(jsonString);
 
     if (!parsed || !Array.isArray(parsed.spaces)) {
@@ -34,7 +37,6 @@ async function readSootClipboardData() {
     for (const item of items) {
       console.log('[SOOT] Clipboard item types:', item.types);
 
-      // ✅ 精确找出 "soot-json" 类型（可能带前缀）
       const matchedType = item.types.find(type =>
         type.toLowerCase().includes(SOOT_MIME_KEYWORD)
       );
@@ -44,6 +46,8 @@ async function readSootClipboardData() {
 
         const blob = await item.getType(matchedType);
         const jsonText = await blob.text();
+
+        // 👇 打印 raw JSON before parsing
         const result = parseSootClipboardData(jsonText);
 
         if (!result.ok) {
@@ -56,7 +60,6 @@ async function readSootClipboardData() {
           space.entries.map(entry => entry.imageURL)
         );
 
-        console.log('[SOOT] Parsed clipboard data:', parsed);
         console.log('[SOOT] Extracted image URLs:', imageURLs);
 
         imageURLs.forEach(url => {
@@ -65,13 +68,26 @@ async function readSootClipboardData() {
           img.style.width = '200px';
           img.style.margin = '10px';
           img.style.border = '1px solid #ccc';
+
+          img.onerror = () => {
+            console.warn(`[SOOT] Image failed to load: ${url}`);
+            const warn = document.createElement('div');
+            warn.innerText = `❌ 404 Image: ${url}`;
+            warn.style.color = 'red';
+            warn.style.fontSize = '12px';
+            warn.style.marginBottom = '10px';
+            output.appendChild(warn);
+          };
+
+          img.onload = () => {
+            console.log(`[SOOT] ✅ Image loaded: ${url}`);
+          };
+
           output.appendChild(img);
         });
-      } else {
-        console.log('[SOOT] No matching "soot-json" type found in:', item.types);
       }
 
-      // ✅ 显示剪贴板中的原始 PNG 图片
+      // ✅ 加载剪贴板原始 image/png（辅助人工确认）
       if (item.types.includes('image/png')) {
         const blob = await item.getType('image/png');
         const url = URL.createObjectURL(blob);
