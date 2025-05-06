@@ -21,25 +21,10 @@ function blobToBase64(blob) {
   });
 }
 
-async function fetchImageWithAuth(imageURL) {
-  try {
-    const res = await fetch(imageURL, {
-      headers: { Authorization: BEARER_TOKEN, Accept: 'image/*' }
-    });
-    if (!res.ok) throw new Error(`Failed to fetch ${imageURL}`);
-    const blob = await res.blob();
-    return await blobToBase64(blob);
-  } catch (err) {
-    console.error(`[SOOT] Auth fetch failed for ${imageURL}:`, err);
-    return null;
-  }
-}
 
-export async function processSootClipboard(outputElement) {
+export async function processSootClipboard() {
   try {
     const items = await navigator.clipboard.read();
-    outputElement.innerHTML = '';
-
     const payloads = [];
     let allEntries = [];
 
@@ -79,8 +64,6 @@ export async function processSootClipboard(outputElement) {
       let base64Image = null;
       if (allPngBlobs[i]) {
         base64Image = await blobToBase64(allPngBlobs[i]);
-      } else if (allEntries[i].imageURL) {
-        base64Image = await fetchImageWithAuth(allEntries[i].imageURL);
       }
 
       const payload = {
@@ -89,30 +72,17 @@ export async function processSootClipboard(outputElement) {
       };
       payloads.push(payload);
 
-      console.log(`[SOOT] 🧩 Payload ${i + 1}:`, {
+      console.log(`[SOOT] 🧩 Structured Payload ${i + 1}:`, {
         ...payload,
         imageBase64Summary: base64Image ? `length=${base64Image.length}` : 'null'
       });
-
-      if (base64Image) {
-        const img = document.createElement('img');
-        img.src = `data:image/png;base64,${base64Image}`;
-        img.style.width = '150px';
-        img.style.height = 'auto';
-        img.style.margin = '10px';
-        img.style.border = '1px solid #0f0';
-        outputElement.appendChild(img);
-      }
-
-      const label = document.createElement('div');
-      label.textContent = `imageURL: ${allEntries[i].imageURL}`;
-      label.style.fontSize = '12px';
-      label.style.marginBottom = '10px';
-      outputElement.appendChild(label);
     }
 
-    console.log('[SOOT] ✅ All Composite Payloads:', payloads);
+    console.log('[SOOT] ✅ Structured Payloads Ready:', payloads);
+    return payloads;
+
   } catch (err) {
-    console.error('[SOOT] Clipboard read failed:', err);
+    console.error('[SOOT] ❌ Clipboard read failed:', err);
+    return [];
   }
 }
