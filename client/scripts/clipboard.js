@@ -1,6 +1,8 @@
 const SOOT_MIME_KEYWORD = 'soot-json';
 
-const MASH_SERVER_URL = import.meta.env?.VITE_MASH_SERVER_URL;
+// const MASH_SERVER_URL = import.meta.env?.VITE_MASH_SERVER_URL;
+const MASH_SERVER_URL = 'http://localhost:8000'; 
+
 
 function parseSootClipboardData(jsonString) {
   try {
@@ -80,7 +82,7 @@ export async function processSootClipboard() {
     console.log('[SOOT] ✅ Structured Payloads Ready:', payloads);
 
     try {
-      const res = await fetch(`${MASH_SERVER_URL}/mash/process-entries`, {
+      await fetch(`${MASH_SERVER_URL}/api/mash/process-entries`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

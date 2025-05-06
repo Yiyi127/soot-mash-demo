@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from mash.controller import router as mash_router 
+from mash.routes import router as mash_router 
 from soot.routes import router as soot_router
 
 app = FastAPI()

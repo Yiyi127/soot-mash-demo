@@ -12,6 +12,10 @@ class SootEntry(BaseModel):
     spaceId: str
     operation: int
 
-@router.post("/mash/process-entries")
-async def receive_entries(entries: List[SootEntry]):
-    return await process_entries(entries)
+# ✅ This wrapper matches the structure `{ "entries": [...] }`
+class SootEntryList(BaseModel):
+    entries: List[SootEntry]
+
+@router.post("/process-entries")
+async def receive_entries(entry_list: SootEntryList):
+    return await process_entries(entry_list.entries)
