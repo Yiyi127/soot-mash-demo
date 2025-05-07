@@ -3,6 +3,7 @@ import os
 import base64
 import mimetypes
 import threading
+import json
 from typing import List, Dict
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -16,6 +17,7 @@ GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel(GEMINI_MODEL_NAME)
+
 description_cache: dict[str, dict] = {}
 cache_lock = threading.Lock()
 
@@ -38,7 +40,6 @@ def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
             image_bytes = res.content
             image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-            # 前端 payload
             frontend_payloads.append({
                 "metadata": meta.dict(),
                 "imageBase64": image_base64
@@ -46,7 +47,6 @@ def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
 
             print(f"[📤] Payload ready for frontend: {meta.filename or meta.instanceId[:6]}")
 
-            # 后端异步处理 description
             threading.Thread(
                 target=_generate_and_cache_description,
                 args=(meta, image_base64)
@@ -63,12 +63,14 @@ def _generate_and_cache_description(meta: Metadata, image_base64: str):
     try:
         print(f"[⏳] Starting description generation for {meta.instanceId[:6]}")
         description, raw_response = generate_description(image_base64, meta)
+        tags = generate_tags(image_base64, meta)
 
         record = {
             "instanceId": meta.instanceId,
             "metadata": meta.dict(),
             "imageBase64": image_base64,
             "description": description,
+            "tags": tags,
             "rawResponse": raw_response
         }
 
@@ -97,3 +99,31 @@ def generate_description(image_base64: str, meta: Metadata) -> tuple[str, str]:
     except Exception as e:
         print(f"[💥] Description generation failed for {meta.instanceId[:6]}: {e}")
         return "Failed to generate description", ""
+
+def generate_tags(image_base64: str, meta: Metadata) -> List[str]:
+    print(f"[🏷️] Tagging: {meta.filename or meta.instanceId[:6]}")
+    try:
+        image_bytes = base64.b64decode(image_base64)
+        mime_type = mimetypes.guess_type(meta.filename or "")[0] or "image/png"
+
+        response = model.generate_content([
+            {"mime_type": mime_type, "data": image_bytes},
+            {"text": "List 3 to 5 concise, lowercase tags that best describe the image content. Return only a JSON array."}
+        ])
+
+        tags_text = response.text.strip()
+        if tags_text.startswith("["):
+            tags = json.loads(tags_text)
+            print(f"[🏷️] Tags parsed: {tags}")
+            return tags
+        else:
+            print(f"[⚠️] Tag format unexpected: {tags_text}")
+            return []
+
+    except Exception as e:
+        print(f"[💥] Tag generation failed for {meta.instanceId[:6]}: {e}")
+        return []
+
+def get_all_cached_descriptions() -> List[Dict]:
+    with cache_lock:
+        return list(description_cache.values())
