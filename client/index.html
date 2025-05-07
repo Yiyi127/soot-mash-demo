@@ -3,12 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <title>SOOT Mash Demo</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <style>
     body {
       margin: 0;
-      background-color: #111;
-      font-family: 'Helvetica Neue', sans-serif;
+      background: radial-gradient(ellipse at center, #111 0%, #000 100%);
+      font-family: 'Share Tech Mono', monospace;
       overflow: hidden;
+      color: #fff;
     }
 
     .container {
@@ -23,51 +25,71 @@
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      padding: 16px 32px;
+      padding: 14px 28px;
       font-size: 18px;
-      font-weight: bold;
+      font-weight: 600;
       background-color: #faff00;
       color: #000;
       border: none;
-      border-radius: 999px;
-      box-shadow: 0 0 10px #faff00, 0 2px 6px rgba(0,0,0,0.4);
+      border-radius: 12px;
+      box-shadow:
+        0 0 10px #faff00,
+        0 0 30px rgba(250, 255, 0, 0.6),
+        0 0 60px rgba(100, 200, 255, 0.2);
       cursor: pointer;
       z-index: 10;
       transition: all 0.3s ease;
+      font-family: 'Share Tech Mono', monospace;
+      letter-spacing: 1px;
     }
 
     #pasteButton:hover {
-      transform: translate(-50%, -50%) scale(1.05);
-      box-shadow: 0 0 16px #faff00, 0 4px 12px rgba(0,0,0,0.6);
+      transform: translate(-50%, -50%) scale(1.07);
+      box-shadow:
+        0 0 16px #faff00,
+        0 0 36px rgba(250, 255, 0, 0.7),
+        0 0 70px rgba(100, 250, 255, 0.3);
     }
 
     .image {
       position: absolute;
       width: 90px;
       height: 90px;
-      border: 2px solid #eee;
-      background-color: #fff;
+      border: 2px solid #faff00;
+      background-color: #111;
       object-fit: cover;
-      border-radius: 8px;
       opacity: 0;
-      transform: scale(0.3) rotate(10deg);
-      box-shadow: 0 0 20px rgba(255, 255, 255, 0.05);
+      transform: scale(0.5) rotate(10deg);
+      box-shadow:
+        0 0 8px rgba(250, 255, 0, 0.4),
+        0 0 18px rgba(90, 200, 250, 0.15),
+        0 0 30px rgba(120, 255, 255, 0.05);
+      filter: blur(3px);
       transition:
-        opacity 1s ease,
-        transform 1s ease,
+        opacity 1.2s ease,
+        transform 1.2s ease,
         left 1.4s ease,
-        top 1.4s ease;
+        top 1.4s ease,
+        filter 1.2s ease;
     }
 
     .image.show {
       opacity: 1;
       transform: scale(1) rotate(0deg);
+      filter: blur(0);
+    }
+
+    .image:hover {
+      box-shadow:
+        0 0 14px #faff00,
+        0 0 26px rgba(250, 255, 0, 0.6),
+        0 0 40px rgba(100, 250, 255, 0.3);
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <button id="pasteButton">📋 Paste from Clipboard</button>
+    <button id="pasteButton">📋 PASTE</button>
   </div>
 
   <script type="module">
@@ -82,7 +104,7 @@
       const centerX = window.innerWidth / 2;
       const centerY = window.innerHeight / 2;
 
-      const ringSpacing = 140;
+      const ringSpacing = 220;
       const imagesPerRing = 10;
       let currentRing = 1;
       let placed = 0;
@@ -92,13 +114,11 @@
         img.src = `data:image/png;base64,${item.imageBase64}`;
         img.className = 'image';
 
-        // 起始位置在按钮中心
         img.style.left = `${centerX - 45}px`;
         img.style.top = `${centerY - 45}px`;
 
         container.appendChild(img);
 
-        // 环形展开
         const angle = (360 / imagesPerRing) * placed;
         const radians = angle * (Math.PI / 180);
         const radius = currentRing * ringSpacing;
