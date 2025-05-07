@@ -2,6 +2,7 @@ import requests
 import os
 import base64
 import mimetypes
+import threading
 from typing import List, Dict
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -11,11 +12,12 @@ load_dotenv()
 
 BEARER_TOKEN = os.getenv("SOOT_ACCESS_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
+GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 genai.configure(api_key=GEMINI_API_KEY)
-GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 model = genai.GenerativeModel(GEMINI_MODEL_NAME)
+description_cache: dict[str, dict] = {}
+cache_lock = threading.Lock()
 
 class Metadata(BaseModel):
     imageURL: str
@@ -24,47 +26,63 @@ class Metadata(BaseModel):
     spaceId: str
     operation: int
 
-def process_metadata_entries(metadata_list: List[Metadata]) -> tuple[List[Dict], List[Dict]]:
+def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
     frontend_payloads = []
-    backend_full_records = []
 
     for meta in metadata_list:
         try:
+            print(f"[📥] Fetching image for: {meta.filename or meta.instanceId[:6]}")
             headers = {"Authorization": f"Bearer {BEARER_TOKEN}"}
             res = requests.get(meta.imageURL, headers=headers)
             res.raise_for_status()
-
             image_bytes = res.content
             image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-            description, raw_response = generate_description(image_base64, meta)
-
+            # 前端 payload
             frontend_payloads.append({
                 "metadata": meta.dict(),
                 "imageBase64": image_base64
             })
 
-            backend_full_records.append({
-                "metadata": meta.dict(),
-                "imageBase64": image_base64,
-                "description": description,
-                "rawResponse": raw_response
-            })
+            print(f"[📤] Payload ready for frontend: {meta.filename or meta.instanceId[:6]}")
+
+            # 后端异步处理 description
+            threading.Thread(
+                target=_generate_and_cache_description,
+                args=(meta, image_base64)
+            ).start()
 
         except Exception as e:
-            print(f"[Error] Failed to process image ({meta.filename or meta.instanceId[:6]}): {e}")
+            print(f"[❌] Failed to process {meta.filename or meta.instanceId[:6]}: {e}")
             continue
 
-    return frontend_payloads, backend_full_records
+    print(f"[✅] Total payloads returned: {len(frontend_payloads)}")
+    return frontend_payloads
 
+def _generate_and_cache_description(meta: Metadata, image_base64: str):
+    try:
+        print(f"[⏳] Starting description generation for {meta.instanceId[:6]}")
+        description, raw_response = generate_description(image_base64, meta)
+
+        record = {
+            "instanceId": meta.instanceId,
+            "metadata": meta.dict(),
+            "imageBase64": image_base64,
+            "description": description,
+            "rawResponse": raw_response
+        }
+
+        with cache_lock:
+            description_cache[meta.instanceId] = record
+        print(f"[✅] Cached description for {meta.instanceId[:6]}")
+
+    except Exception as e:
+        print(f"[⚠️] Gemini error for {meta.instanceId[:6]}: {e}")
 
 def generate_description(image_base64: str, meta: Metadata) -> tuple[str, str]:
-    print(f"[Debug] Processing: {meta.filename or meta.instanceId[:6]}")
-    print(f"[Debug] Base64 preview: {image_base64[:100]}...")
-
+    print(f"[🧠] Generating: {meta.filename or meta.instanceId[:6]}")
     try:
         image_bytes = base64.b64decode(image_base64)
-
         mime_type = mimetypes.guess_type(meta.filename or "")[0] or "image/png"
 
         response = model.generate_content([
@@ -73,10 +91,9 @@ def generate_description(image_base64: str, meta: Metadata) -> tuple[str, str]:
         ])
 
         description = response.text.strip()
-        print(f"[Gemini] {meta.filename or meta.instanceId[:6]} → {description}")
-
+        print(f"[🎯] Gemini result for {meta.instanceId[:6]}: {description}")
         return description, response.text
 
     except Exception as e:
-        print(f"[Error] Gemini API failed for {meta.filename or meta.instanceId[:6]}: {e}")
-        return f"Error generating description for image '{meta.filename or meta.instanceId[:6]}'", ""
+        print(f"[💥] Description generation failed for {meta.instanceId[:6]}: {e}")
+        return "Failed to generate description", ""
