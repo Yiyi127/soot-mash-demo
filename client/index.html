@@ -8,10 +8,10 @@
   <style>
     body {
       margin: 0;
-      background: linear-gradient(160deg, #0c0c0c 0%, #1a1a1a 100%);
+      background-color: #0c0c0c;
       font-family: 'Share Tech Mono', monospace;
       color: #fff;
-      overflow-y: scroll; /* ✅ 页面允许垂直滚动 */
+      overflow-y: scroll;
     }
 
     .container {
@@ -45,7 +45,6 @@
       letter-spacing: 2px;
       color: #faff00;
       z-index: 10;
-      text-shadow: 0 0 6px rgba(250, 255, 0, 0.6);
       user-select: none;
     }
 
@@ -54,37 +53,30 @@
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      padding: 14px 36px;
-      font-size: 18px;
-      font-weight: 600;
+      padding: 12px 28px;
+      font-size: 16px;
       background-color: #faff00;
       color: #000;
-      border: none;
-      border-radius: 6px;
-      box-shadow: 0 0 14px #faff00, 0 0 40px rgba(250, 255, 0, 0.5), 0 0 60px rgba(100, 200, 255, 0.1);
+      border: 1px solid #000;
+      border-radius: 2px;
+      box-shadow: 0 0 6px #faff00;
       cursor: pointer;
       z-index: 10;
-      transition: all 0.2s ease-in-out;
       font-family: 'Share Tech Mono', monospace;
-      letter-spacing: 1px;
       display: flex;
       align-items: center;
-      gap: 10px;
-    }
-
-    #pasteButton .material-symbols-outlined {
-      font-size: 20px;
+      gap: 8px;
     }
 
     #pasteButton:hover {
-      transform: translate(-50%, -50%) scale(1.05);
+      background-color: #fff200;
     }
 
     .image {
       position: absolute;
       width: 90px;
       height: 90px;
-      border: 2px solid #faff00;
+      border: 1px solid #faff00;
       background-color: #111;
       object-fit: cover;
       opacity: 0;
@@ -93,8 +85,7 @@
         opacity 1.2s ease,
         transform 1.2s ease,
         left 1.4s ease,
-        top 1.4s ease,
-        border 0.3s ease;
+        top 1.4s ease;
     }
 
     .image.show {
@@ -102,28 +93,21 @@
       transform: scale(1) rotate(0deg);
     }
 
-    .image:hover {
-      transform: scale(1.05);
-      border: 4px solid #faff00;
-      box-shadow: 0 0 4px #faff00;
-    }
-
     #terminal {
       position: absolute;
       top: 50%;
       right: 10vw;
       transform: translateY(-50%);
-      width: 40vw;
-      height: 60vh;
+      width: 340px;
+      height: 280px;
       background: #000;
-      border: 2px solid #faff00;
-      box-shadow: 0 0 0 2px #000, 0 0 20px #faff00;
-      padding: 16px;
+      border: 1px solid #faff00;
       color: #faff00;
+      padding: 16px;
       font-size: 14px;
       font-family: 'Share Tech Mono', monospace;
       z-index: 9;
-      display: none; /* ✅ 默认隐藏 */
+      display: none;
       flex-direction: column;
       gap: 8px;
     }
@@ -135,7 +119,6 @@
       color: #faff00;
       font-size: 14px;
       outline: none;
-      font-family: 'Share Tech Mono', monospace;
     }
   </style>
 </head>
@@ -161,52 +144,63 @@
     const container = document.getElementById('mainContainer');
     const terminal = document.getElementById('terminal');
     let imageElements = [];
-
     window.runProcess = async () => {
-      const results = await processSootClipboard();
+  const results = await processSootClipboard();
 
-      const centerX = window.innerWidth / 2;
-      const centerY = window.innerHeight / 2;
-      const ringSpacing = 230;
-      const imagesPerRing = 10;
-      let currentRing = 1;
-      let placed = 0;
+  // ✅ 过滤掉没有 base64 内容的项
+  const filteredResults = results.filter(item => item.imageBase64 && item.imageBase64 !== 'null');
 
-      results.forEach((item, i) => {
-        const img = document.createElement('img');
-        img.src = `data:image/png;base64,${item.imageBase64}`;
-        img.className = 'image';
-        img.style.left = `${centerX - 45}px`;
-        img.style.top = `${centerY - 45}px`;
-        container.appendChild(img);
-        imageElements.push(img);
+  const centerX = window.innerWidth / 2;
+  const centerY = window.innerHeight / 2;
+  const ringSpacing = 230;
+  const imagesPerRing = 10;
+  let currentRing = 1;
+  let placed = 0;
 
-        const angle = (360 / imagesPerRing) * placed;
-        const radians = angle * (Math.PI / 180);
-        const radius = currentRing * ringSpacing;
-        const finalX = centerX + Math.cos(radians) * radius - 45;
-        const finalY = centerY + Math.sin(radians) * radius - 45;
+  filteredResults.forEach((item, i) => {
+    const img = document.createElement('img');
+    img.src = `data:image/png;base64,${item.imageBase64}`;
+    img.className = 'image';
+    img.style.left = `${centerX - 45}px`;
+    img.style.top = `${centerY - 45}px`;
+    container.appendChild(img);
+    imageElements.push(img);
 
-        setTimeout(() => {
-          img.style.left = `${finalX}px`;
-          img.style.top = `${finalY}px`;
-          img.classList.add('show');
-        }, i * 150);
+    const angle = (360 / imagesPerRing) * placed;
+    const radians = angle * (Math.PI / 180);
+    const radius = currentRing * ringSpacing;
+    const finalX = centerX + Math.cos(radians) * radius - 45;
+    const finalY = centerY + Math.sin(radians) * radius - 45;
 
-        placed++;
-        if (placed >= imagesPerRing * currentRing) {
-          currentRing++;
-          placed = 0;
-        }
-      });
+    setTimeout(() => {
+      img.style.left = `${finalX}px`;
+      img.style.top = `${finalY}px`;
+      img.classList.add('show');
+    }, i * 100);
 
-      setTimeout(() => {
-        container.addEventListener('click', collapseToSidebar, { once: true });
-      }, 1000);
-    };
+    placed++;
+    if (placed >= imagesPerRing * currentRing) {
+      currentRing++;
+      placed = 0;
+    }
+  });
+
+  setTimeout(() => {
+  const listener = (e) => {
+    if (!button.contains(e.target)) {
+      collapseToSidebar();
+      window.removeEventListener('click', listener);
+    }
+  };
+  window.addEventListener('click', listener);
+}, filteredResults.length * 100 + 500); 
+
+};
+
 
     function collapseToSidebar() {
       button.style.display = 'none';
+
       const startY = 80;
       const spacingY = 100;
 
@@ -217,7 +211,7 @@
         img.style.transform = 'scale(1)';
       });
 
-      terminal.style.display = 'flex'; // ✅ 显示 terminal
+      terminal.style.display = 'flex';
     }
 
     button.addEventListener('click', () => window.runProcess());
