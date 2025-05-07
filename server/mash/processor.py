@@ -31,7 +31,7 @@ def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
             image_bytes = res.content
             image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-            description = generate_description(meta)
+            description = generate_description(image_base64, meta)
 
             results.append({
                 "metadata": meta.dict(),
@@ -47,5 +47,5 @@ def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
 
 
 
-def generate_description(meta: Metadata) -> str:
+def generate_description(image_base64: str, meta: Metadata) -> str:
     return f"Fake description for image '{meta.filename or meta.instanceId[:6]}' with op {meta.operation}"
