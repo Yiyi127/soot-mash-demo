@@ -94,32 +94,31 @@
     }
 
     .image:hover {
-  transform: scale(1.06); 
-  border: 2px solid #faff00;
-}
-
+      transform: scale(1.06);
+      border: 2px solid #faff00;
+    }
 
     #terminal {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 600px;
-  height: 320px;
-  background: #000;
-  border: 1px solid #faff00;
-  color: #faff00;
-  padding: 24px;
-  font-size: 15px;
-  font-family: 'Share Tech Mono', monospace;
-  z-index: 9;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  opacity: 0; 
-  transition: opacity 0.8s ease; 
-  pointer-events: none; 
-}
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 600px;
+      height: 320px;
+      background: #000;
+      border: 1px solid #faff00;
+      color: #faff00;
+      padding: 24px;
+      font-size: 15px;
+      font-family: 'Share Tech Mono', monospace;
+      z-index: 9;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      opacity: 0;
+      transition: opacity 0.8s ease;
+      pointer-events: none;
+    }
 
     #cliLine {
       display: flex;
@@ -142,6 +141,33 @@
       flex: 1;
       caret-color: #faff00;
     }
+
+    #loadingTypewriter {
+      position: absolute;
+      top: calc(50% + 48px);
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Share Tech Mono', monospace;
+      color: #faff00;
+      font-size: 14px;
+      letter-spacing: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      width: 0;
+      border-right: 1px solid #faff00;
+      animation: typing 2s steps(12) infinite alternate;
+      z-index: 10;
+      display: none;
+    }
+
+    @keyframes typing {
+      0% {
+        width: 0;
+      }
+      100% {
+        width: 12ch;
+      }
+    }
   </style>
 </head>
 <body>
@@ -153,6 +179,7 @@
       PASTE
       <span class="material-symbols-outlined">auto_awesome</span>
     </button>
+    <div id="loadingTypewriter">loading mash...</div>
 
     <div id="terminal">
       <div>~/soot/mash ▶</div>
@@ -170,15 +197,20 @@
     const container = document.getElementById('mainContainer');
     const terminal = document.getElementById('terminal');
     const cliInput = document.getElementById('cliInput');
+    const loadingEl = document.getElementById('loadingTypewriter');
+
     let imageElements = [];
 
     window.runProcess = async () => {
-    
+      loadingEl.style.display = 'block';
+
       imageElements.forEach(el => el.remove());
       imageElements = [];
 
       const results = await processSootClipboard();
       const filteredResults = results.filter(item => item.imageBase64 && item.imageBase64 !== 'null');
+
+      loadingEl.style.display = 'none';
 
       const centerX = window.innerWidth / 2;
       const centerY = window.innerHeight / 2;
@@ -215,7 +247,6 @@
         }
       });
 
-   
       const listener = (e) => {
         if (!button.contains(e.target)) {
           collapseToSidebar();
@@ -226,29 +257,27 @@
     };
 
     function collapseToSidebar() {
-  const startY = 80;
-  const spacingY = 100;
+      const startY = 80;
+      const spacingY = 100;
 
-  imageElements.forEach((img, index) => {
-    img.style.transition = 'all 1s ease';
-    img.style.left = '40px';
-    img.style.top = `${startY + spacingY * index}px`;
-  });
+      imageElements.forEach((img, index) => {
+        img.style.transition = 'all 1s ease';
+        img.style.left = '40px';
+        img.style.top = `${startY + spacingY * index}px`;
+      });
 
-  button.style.display = 'none';
+      button.style.display = 'none';
 
-  terminal.style.display = 'flex';
-  terminal.style.pointerEvents = 'auto';
-  setTimeout(() => {
-    terminal.style.opacity = '1';
-    cliInput.focus();
-  }, 100);
-}
-
+      terminal.style.display = 'flex';
+      terminal.style.pointerEvents = 'auto';
+      setTimeout(() => {
+        terminal.style.opacity = '1';
+        cliInput.focus();
+      }, 100);
+    }
 
     button.addEventListener('click', () => window.runProcess());
 
-  
     cliInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         const raw = cliInput.value.trim();
