@@ -1,3 +1,5 @@
+//scripts/clipboard.js
+
 const SOOT_MIME_KEYWORD = 'soot-json';
 const MASH_SERVER_URL = 'http://localhost:8000';
 

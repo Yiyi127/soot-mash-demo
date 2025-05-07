@@ -1,3 +1,5 @@
+//scripts/prompt.js
+
 let MASH_SERVER_URL = null;
 
 async function loadConfig() {
