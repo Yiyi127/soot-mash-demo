@@ -96,29 +96,43 @@
     #terminal {
       position: absolute;
       top: 50%;
-      right: 10vw;
-      transform: translateY(-50%);
-      width: 340px;
-      height: 280px;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 600px;
+      height: 320px;
       background: #000;
       border: 1px solid #faff00;
+      box-shadow: 0 0 12px #faff00;
       color: #faff00;
-      padding: 16px;
-      font-size: 14px;
+      padding: 24px;
+      font-size: 15px;
       font-family: 'Share Tech Mono', monospace;
       z-index: 9;
       display: none;
       flex-direction: column;
+      gap: 16px;
+    }
+
+    #cliLine {
+      display: flex;
+      align-items: center;
       gap: 8px;
     }
 
-    #terminal input {
+    #cliLine .prompt {
+      user-select: none;
+      color: #faff00;
+    }
+
+    #cliInput {
       background: transparent;
       border: none;
-      border-bottom: 1px solid #faff00;
       color: #faff00;
-      font-size: 14px;
+      font-size: 15px;
+      font-family: 'Share Tech Mono', monospace;
       outline: none;
+      flex: 1;
+      caret-color: #faff00;
     }
   </style>
 </head>
@@ -131,9 +145,13 @@
       PASTE
       <span class="material-symbols-outlined">auto_awesome</span>
     </button>
+
     <div id="terminal">
       <div>~/soot/mash ▶</div>
-      <input type="text" placeholder="type a command..." />
+      <div id="cliLine">
+        <span class="prompt">mash:</span>
+        <input id="cliInput" type="text" placeholder=" apply [paintings] to [garments]" />
+      </div>
     </div>
   </div>
 
@@ -143,10 +161,11 @@
     const button = document.getElementById('pasteButton');
     const container = document.getElementById('mainContainer');
     const terminal = document.getElementById('terminal');
+    const cliInput = document.getElementById('cliInput');
     let imageElements = [];
 
     window.runProcess = async () => {
-      // 清除旧图像
+    
       imageElements.forEach(el => el.remove());
       imageElements = [];
 
@@ -188,7 +207,7 @@
         }
       });
 
-      // 注册一次性监听器，等待用户任意点击后 collapse
+   
       const listener = (e) => {
         if (!button.contains(e.target)) {
           collapseToSidebar();
@@ -199,7 +218,6 @@
     };
 
     function collapseToSidebar() {
-      // 固定大小，不修改 transform
       const startY = 80;
       const spacingY = 100;
 
@@ -211,9 +229,19 @@
 
       button.style.display = 'none';
       terminal.style.display = 'flex';
+      setTimeout(() => cliInput.focus(), 300); 
     }
 
     button.addEventListener('click', () => window.runProcess());
+
+  
+    cliInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const raw = cliInput.value.trim();
+        console.log('🟡 Received command:', `mash: ${raw}`);
+        cliInput.value = '';
+      }
+    });
   </script>
 </body>
 </html>
