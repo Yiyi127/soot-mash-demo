@@ -7,4 +7,5 @@ router = APIRouter()
 
 @router.post("/process-entries")
 def process_entries(metadata_list: List[Metadata]):
-    return process_metadata_entries(metadata_list)
+    frontend_payloads, _ = process_metadata_entries(metadata_list)
+    return frontend_payloads 
