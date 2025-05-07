@@ -10,15 +10,14 @@
       margin: 0;
       background: linear-gradient(160deg, #0c0c0c 0%, #1a1a1a 100%);
       font-family: 'Share Tech Mono', monospace;
-      overflow: hidden;
       color: #fff;
+      overflow-y: scroll; /* ✅ 页面允许垂直滚动 */
     }
 
     .container {
       position: relative;
-      width: 100vw;
-      height: 100vh;
-      overflow: hidden;
+      width: 100%;
+      min-height: 100vh;
     }
 
     #hudOverlay {
@@ -111,23 +110,22 @@
 
     #terminal {
       position: absolute;
-      right: 0;
-      bottom: -60%;
+      top: 50%;
+      right: 10vw;
+      transform: translateY(-50%);
       width: 40vw;
       height: 60vh;
       background: #000;
-      border-left: 2px solid #faff00;
-      border-top: 2px solid #faff00;
-      box-shadow: 0 0 16px #faff00;
+      border: 2px solid #faff00;
+      box-shadow: 0 0 0 2px #000, 0 0 20px #faff00;
       padding: 16px;
       color: #faff00;
       font-size: 14px;
       font-family: 'Share Tech Mono', monospace;
       z-index: 9;
-      display: flex;
+      display: none; /* ✅ 默认隐藏 */
       flex-direction: column;
       gap: 8px;
-      transition: bottom 1s ease;
     }
 
     #terminal input {
@@ -138,10 +136,6 @@
       font-size: 14px;
       outline: none;
       font-family: 'Share Tech Mono', monospace;
-    }
-
-    .terminal-visible {
-      bottom: 0;
     }
   </style>
 </head>
@@ -223,7 +217,7 @@
         img.style.transform = 'scale(1)';
       });
 
-      terminal.classList.add('terminal-visible');
+      terminal.style.display = 'flex'; // ✅ 显示 terminal
     }
 
     button.addEventListener('click', () => window.runProcess());
