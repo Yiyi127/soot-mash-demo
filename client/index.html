@@ -3,19 +3,107 @@
 <head>
   <meta charset="UTF-8" />
   <title>SOOT Mash Demo</title>
+  <style>
+    body {
+      margin: 0;
+      background-color: #111; /* 黑色背景 */
+      font-family: 'Helvetica Neue', sans-serif;
+      overflow: hidden;
+    }
+
+    .container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #pasteButton {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      padding: 16px 28px;
+      font-size: 18px;
+      font-weight: 600;
+      background-color: #faff00; /* 正确 SOOT Yellow */
+      color: #000;
+      border: none;
+      border-radius: 999px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+      cursor: pointer;
+      z-index: 10;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    #pasteButton:hover {
+      transform: translate(-50%, -50%) scale(1.05);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+    }
+
+    .image {
+      position: absolute;
+      width: 100px;
+      height: 100px;
+      border: 3px solid #000;
+      background-color: #fff;
+      object-fit: cover;
+      opacity: 0;
+      transform: scale(0.8);
+      transition: opacity 0.8s ease, transform 0.8s ease, left 1.2s ease, top 1.2s ease;
+      border-radius: 4px;
+    }
+
+    .image.show {
+      opacity: 1;
+      transform: scale(1);
+    }
+  </style>
 </head>
 <body>
-  <h1>Paste Test</h1>
-  <button onclick="runProcess()">📋 Paste from Clipboard</button>
+  <div class="container">
+    <button id="pasteButton">📋 Paste from Clipboard</button>
+  </div>
 
   <script type="module">
     import { processSootClipboard } from './scripts/clipboard.js';
 
-    window.runProcess = () => {
-      processSootClipboard().then(() => {
-        console.log('✔ Done!');
+    const button = document.getElementById('pasteButton');
+    const container = document.querySelector('.container');
+
+    window.runProcess = async () => {
+      const results = await processSootClipboard();
+
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+
+      results.forEach((item, i) => {
+        const img = document.createElement('img');
+        img.src = `data:image/png;base64,${item.imageBase64}`;
+        img.className = 'image';
+
+        // 初始位置：重叠在按钮中心
+        img.style.left = `${centerX - 50}px`;
+        img.style.top = `${centerY - 50}px`;
+
+        container.appendChild(img);
+
+        // 随机目标位置（从中心散开）
+        const offsetAngle = Math.random() * 2 * Math.PI;
+        const offsetRadius = 100 + Math.random() * 400;
+        const finalX = centerX + Math.cos(offsetAngle) * offsetRadius - 50;
+        const finalY = centerY + Math.sin(offsetAngle) * offsetRadius - 50;
+
+        // 添加展示动画
+        setTimeout(() => {
+          img.style.left = `${finalX}px`;
+          img.style.top = `${finalY}px`;
+          img.classList.add('show');
+        }, i * 200);
       });
     };
+
+    button.addEventListener('click', () => window.runProcess());
   </script>
 </body>
 </html>
