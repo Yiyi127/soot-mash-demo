@@ -126,4 +126,8 @@ def generate_tags(image_base64: str, meta: Metadata) -> List[str]:
 
 def get_all_cached_descriptions() -> List[Dict]:
     with cache_lock:
-        return list(description_cache.values())
+        cleaned = []
+        for record in description_cache.values():
+            filtered = {k: v for k, v in record.items() if k != "imageBase64"}
+            cleaned.append(filtered)
+        return cleaned
