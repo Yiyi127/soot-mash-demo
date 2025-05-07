@@ -3,6 +3,7 @@ soot-mash-demo/
 │   ├── index.html
 │   └── scripts/
 │       └── main.js
+|       |__ clipboard.js
 │
 ├── server/               
 │   ├── main.py           

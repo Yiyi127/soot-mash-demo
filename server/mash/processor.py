@@ -1,24 +1,44 @@
-from mash.image_utils import fetch_image_as_base64
-from typing import List
+# server/mash/processor.py
+import requests
+import os
+import base64
+from typing import List, Dict
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
-class SootEntry(BaseModel):
+load_dotenv()
+
+BEARER_TOKEN = os.getenv("SOOT_ACCESS_TOKEN")
+
+
+class Metadata(BaseModel):
     imageURL: str
     instanceId: str
-    filename: str | None
+    filename: str | None = None
     spaceId: str
     operation: int
 
-async def process_entries(entries: List[SootEntry]):
-    print(f"[SOOT] ✅ Received {len(entries)} entries")
 
+def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
     results = []
-    for entry in entries:
-        base64_img = fetch_image_as_base64(entry.imageURL)
-        print(f"[SOOT] Processed {entry.imageURL} => {len(base64_img or '')} bytes")
-        results.append({
-            "metadata": entry.dict(),
-            "imageBase64": base64_img,
-        })
 
-    return {"payloads": results}
+    for meta in metadata_list:
+        try:
+            headers = {
+                "Authorization": f"Bearer {BEARER_TOKEN}"
+            }
+            res = requests.get(meta.imageURL, headers=headers)
+            res.raise_for_status()
+            image_bytes = res.content
+            image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+
+            results.append({
+                "metadata": meta.dict(),
+                "imageBase64": image_base64
+            })
+
+        except Exception as e:
+            print(f"[Error] Failed to fetch image from {meta.imageURL}: {e}")
+            continue
+
+    return results
