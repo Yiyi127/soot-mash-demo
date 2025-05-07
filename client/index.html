@@ -62,10 +62,7 @@
       color: #000;
       border: none;
       border-radius: 6px;
-      box-shadow:
-        0 0 14px #faff00,
-        0 0 40px rgba(250, 255, 0, 0.5),
-        0 0 60px rgba(100, 200, 255, 0.1);
+      box-shadow: 0 0 14px #faff00, 0 0 40px rgba(250, 255, 0, 0.5), 0 0 60px rgba(100, 200, 255, 0.1);
       cursor: pointer;
       z-index: 10;
       transition: all 0.2s ease-in-out;
@@ -82,10 +79,6 @@
 
     #pasteButton:hover {
       transform: translate(-50%, -50%) scale(1.05);
-      box-shadow:
-        0 0 18px #faff00,
-        0 0 50px rgba(250, 255, 0, 0.7),
-        0 0 80px rgba(100, 250, 255, 0.2);
     }
 
     .image {
@@ -97,7 +90,6 @@
       object-fit: cover;
       opacity: 0;
       transform: scale(0.5) rotate(10deg);
-      box-shadow: none;
       transition:
         opacity 1.2s ease,
         transform 1.2s ease,
@@ -116,10 +108,45 @@
       border: 4px solid #faff00;
       box-shadow: 0 0 4px #faff00;
     }
+
+    #terminal {
+      position: absolute;
+      right: 0;
+      bottom: -60%;
+      width: 40vw;
+      height: 60vh;
+      background: #000;
+      border-left: 2px solid #faff00;
+      border-top: 2px solid #faff00;
+      box-shadow: 0 0 16px #faff00;
+      padding: 16px;
+      color: #faff00;
+      font-size: 14px;
+      font-family: 'Share Tech Mono', monospace;
+      z-index: 9;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: bottom 1s ease;
+    }
+
+    #terminal input {
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid #faff00;
+      color: #faff00;
+      font-size: 14px;
+      outline: none;
+      font-family: 'Share Tech Mono', monospace;
+    }
+
+    .terminal-visible {
+      bottom: 0;
+    }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="container" id="mainContainer">
     <div id="hudOverlay"></div>
     <div id="header">MASH / playground</div>
     <button id="pasteButton">
@@ -127,20 +154,25 @@
       PASTE
       <span class="material-symbols-outlined">auto_awesome</span>
     </button>
+    <div id="terminal">
+      <div>~/soot/mash ▶</div>
+      <input type="text" placeholder="type a command..." />
+    </div>
   </div>
 
   <script type="module">
     import { processSootClipboard } from './scripts/clipboard.js';
 
     const button = document.getElementById('pasteButton');
-    const container = document.querySelector('.container');
+    const container = document.getElementById('mainContainer');
+    const terminal = document.getElementById('terminal');
+    let imageElements = [];
 
     window.runProcess = async () => {
       const results = await processSootClipboard();
 
       const centerX = window.innerWidth / 2;
       const centerY = window.innerHeight / 2;
-
       const ringSpacing = 230;
       const imagesPerRing = 10;
       let currentRing = 1;
@@ -150,16 +182,14 @@
         const img = document.createElement('img');
         img.src = `data:image/png;base64,${item.imageBase64}`;
         img.className = 'image';
-
         img.style.left = `${centerX - 45}px`;
         img.style.top = `${centerY - 45}px`;
-
         container.appendChild(img);
+        imageElements.push(img);
 
         const angle = (360 / imagesPerRing) * placed;
         const radians = angle * (Math.PI / 180);
         const radius = currentRing * ringSpacing;
-
         const finalX = centerX + Math.cos(radians) * radius - 45;
         const finalY = centerY + Math.sin(radians) * radius - 45;
 
@@ -175,7 +205,26 @@
           placed = 0;
         }
       });
+
+      setTimeout(() => {
+        container.addEventListener('click', collapseToSidebar, { once: true });
+      }, 1000);
     };
+
+    function collapseToSidebar() {
+      button.style.display = 'none';
+      const startY = 80;
+      const spacingY = 100;
+
+      imageElements.forEach((img, index) => {
+        img.style.transition = 'all 1s ease';
+        img.style.left = '40px';
+        img.style.top = `${startY + spacingY * index}px`;
+        img.style.transform = 'scale(1)';
+      });
+
+      terminal.classList.add('terminal-visible');
+    }
 
     button.addEventListener('click', () => window.runProcess());
   </script>
