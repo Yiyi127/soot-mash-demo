@@ -94,24 +94,26 @@
     }
 
     #terminal {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 600px;
-      height: 320px;
-      background: #000;
-      border: 1px solid #faff00;
-      box-shadow: 0 0 12px #faff00;
-      color: #faff00;
-      padding: 24px;
-      font-size: 15px;
-      font-family: 'Share Tech Mono', monospace;
-      z-index: 9;
-      display: none;
-      flex-direction: column;
-      gap: 16px;
-    }
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  height: 320px;
+  background: #000;
+  border: 1px solid #faff00;
+  color: #faff00;
+  padding: 24px;
+  font-size: 15px;
+  font-family: 'Share Tech Mono', monospace;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  opacity: 0; 
+  transition: opacity 0.8s ease; 
+  pointer-events: none; 
+}
 
     #cliLine {
       display: flex;
@@ -218,19 +220,25 @@
     };
 
     function collapseToSidebar() {
-      const startY = 80;
-      const spacingY = 100;
+  const startY = 80;
+  const spacingY = 100;
 
-      imageElements.forEach((img, index) => {
-        img.style.transition = 'all 1s ease';
-        img.style.left = '40px';
-        img.style.top = `${startY + spacingY * index}px`;
-      });
+  imageElements.forEach((img, index) => {
+    img.style.transition = 'all 1s ease';
+    img.style.left = '40px';
+    img.style.top = `${startY + spacingY * index}px`;
+  });
 
-      button.style.display = 'none';
-      terminal.style.display = 'flex';
-      setTimeout(() => cliInput.focus(), 300); 
-    }
+  button.style.display = 'none';
+
+  terminal.style.display = 'flex';
+  terminal.style.pointerEvents = 'auto';
+  setTimeout(() => {
+    terminal.style.opacity = '1';
+    cliInput.focus();
+  }, 100);
+}
+
 
     button.addEventListener('click', () => window.runProcess());
 
