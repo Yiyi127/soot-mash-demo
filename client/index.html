@@ -11,13 +11,13 @@
       background-color: #0c0c0c;
       font-family: 'Share Tech Mono', monospace;
       color: #fff;
-      overflow-y: scroll;
+      overflow-y: hidden;
     }
 
     .container {
       position: relative;
       width: 100%;
-      min-height: 100vh;
+      height: 100vh;
     }
 
     #hudOverlay {
@@ -144,63 +144,62 @@
     const container = document.getElementById('mainContainer');
     const terminal = document.getElementById('terminal');
     let imageElements = [];
+
     window.runProcess = async () => {
-  const results = await processSootClipboard();
+      // 清除旧图像
+      imageElements.forEach(el => el.remove());
+      imageElements = [];
 
-  // ✅ 过滤掉没有 base64 内容的项
-  const filteredResults = results.filter(item => item.imageBase64 && item.imageBase64 !== 'null');
+      const results = await processSootClipboard();
+      const filteredResults = results.filter(item => item.imageBase64 && item.imageBase64 !== 'null');
 
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight / 2;
-  const ringSpacing = 230;
-  const imagesPerRing = 10;
-  let currentRing = 1;
-  let placed = 0;
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      const ringSpacing = 230;
+      const imagesPerRing = 10;
+      let currentRing = 1;
+      let placed = 0;
 
-  filteredResults.forEach((item, i) => {
-    const img = document.createElement('img');
-    img.src = `data:image/png;base64,${item.imageBase64}`;
-    img.className = 'image';
-    img.style.left = `${centerX - 45}px`;
-    img.style.top = `${centerY - 45}px`;
-    container.appendChild(img);
-    imageElements.push(img);
+      filteredResults.forEach((item, i) => {
+        const img = document.createElement('img');
+        img.src = `data:image/png;base64,${item.imageBase64}`;
+        img.className = 'image';
+        img.style.left = `${centerX - 45}px`;
+        img.style.top = `${centerY - 45}px`;
+        container.appendChild(img);
+        imageElements.push(img);
 
-    const angle = (360 / imagesPerRing) * placed;
-    const radians = angle * (Math.PI / 180);
-    const radius = currentRing * ringSpacing;
-    const finalX = centerX + Math.cos(radians) * radius - 45;
-    const finalY = centerY + Math.sin(radians) * radius - 45;
+        const angle = (360 / imagesPerRing) * placed;
+        const radians = angle * (Math.PI / 180);
+        const radius = currentRing * ringSpacing;
+        const finalX = centerX + Math.cos(radians) * radius - 45;
+        const finalY = centerY + Math.sin(radians) * radius - 45;
 
-    setTimeout(() => {
-      img.style.left = `${finalX}px`;
-      img.style.top = `${finalY}px`;
-      img.classList.add('show');
-    }, i * 100);
+        setTimeout(() => {
+          img.style.left = `${finalX}px`;
+          img.style.top = `${finalY}px`;
+          img.classList.add('show');
+        }, i * 100);
 
-    placed++;
-    if (placed >= imagesPerRing * currentRing) {
-      currentRing++;
-      placed = 0;
-    }
-  });
+        placed++;
+        if (placed >= imagesPerRing * currentRing) {
+          currentRing++;
+          placed = 0;
+        }
+      });
 
-  setTimeout(() => {
-  const listener = (e) => {
-    if (!button.contains(e.target)) {
-      collapseToSidebar();
-      window.removeEventListener('click', listener);
-    }
-  };
-  window.addEventListener('click', listener);
-}, filteredResults.length * 100 + 500); 
-
-};
-
+      // 注册一次性监听器，等待用户任意点击后 collapse
+      const listener = (e) => {
+        if (!button.contains(e.target)) {
+          collapseToSidebar();
+          window.removeEventListener('click', listener);
+        }
+      };
+      window.addEventListener('click', listener);
+    };
 
     function collapseToSidebar() {
-      button.style.display = 'none';
-
+      // 固定大小，不修改 transform
       const startY = 80;
       const spacingY = 100;
 
@@ -208,9 +207,9 @@
         img.style.transition = 'all 1s ease';
         img.style.left = '40px';
         img.style.top = `${startY + spacingY * index}px`;
-        img.style.transform = 'scale(1)';
       });
 
+      button.style.display = 'none';
       terminal.style.display = 'flex';
     }
 
