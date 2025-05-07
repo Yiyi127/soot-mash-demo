@@ -25,3 +25,7 @@ build/
 .eggs/
 
 /.directory.md
+
+
+# Configuration files
+**/config.json
