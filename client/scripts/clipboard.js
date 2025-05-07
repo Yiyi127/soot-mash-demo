@@ -110,7 +110,10 @@ export async function processSootClipboard() {
       img.style.width = '200px';
       img.style.margin = '8px';
       document.body.appendChild(img);
+    
+      console.log(`[SOOT] 🧠 Description for ${img.alt}: ${item.description}`);
     });
+    
 
     console.log('[SOOT] 🎉 Done displaying images');
     return data;

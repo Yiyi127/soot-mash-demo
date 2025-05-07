@@ -18,7 +18,6 @@ class Metadata(BaseModel):
     spaceId: str
     operation: int
 
-
 def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
     results = []
 
@@ -32,9 +31,12 @@ def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
             image_bytes = res.content
             image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
+            description = generate_description(meta)
+
             results.append({
                 "metadata": meta.dict(),
-                "imageBase64": image_base64
+                "imageBase64": image_base64,
+                "description": description
             })
 
         except Exception as e:
@@ -42,3 +44,8 @@ def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
             continue
 
     return results
+
+
+
+def generate_description(meta: Metadata) -> str:
+    return f"Fake description for image '{meta.filename or meta.instanceId[:6]}' with op {meta.operation}"
