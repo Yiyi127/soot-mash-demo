@@ -1,8 +1,5 @@
 const SOOT_MIME_KEYWORD = 'soot-json';
-
-// const MASH_SERVER_URL = import.meta.env?.VITE_MASH_SERVER_URL;
-const MASH_SERVER_URL = 'http://localhost:8000'; 
-
+const MASH_SERVER_URL = 'http://localhost:8000';
 
 function parseSootClipboardData(jsonString) {
   try {
@@ -24,9 +21,13 @@ function blobToBase64(blob) {
 }
 
 export async function processSootClipboard() {
+  console.log('[SOOT] 🚀 Script started: processSootClipboard');
+  const payloads = [];
+
   try {
     const items = await navigator.clipboard.read();
-    const payloads = [];
+    console.log(`[SOOT] 📋 Clipboard contains ${items.length} items`);
+
     let allEntries = [];
 
     for (const item of items) {
@@ -34,6 +35,7 @@ export async function processSootClipboard() {
         type.toLowerCase().includes(SOOT_MIME_KEYWORD)
       );
       if (matchedType) {
+        console.log(`[SOOT] ✨ Found metadata of type "${matchedType}"`);
         const blob = await item.getType(matchedType);
         const jsonText = await blob.text();
         const result = parseSootClipboardData(jsonText);
@@ -48,6 +50,9 @@ export async function processSootClipboard() {
               operation: space.operation
             }))
           );
+          console.log(`[SOOT] ✅ Extracted ${allEntries.length} metadata entries`);
+        } else {
+          console.warn('[SOOT] ⚠️ Failed to parse metadata:', result.error);
         }
       }
     }
@@ -79,27 +84,38 @@ export async function processSootClipboard() {
       });
     }
 
-    console.log('[SOOT] ✅ Structured Payloads Ready:', payloads);
-
-    try {
-      await fetch(`${MASH_SERVER_URL}/api/mash/process-entries`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payloads.map(p => p.metadata))
-      });
-
-      const data = await res.json();
-      console.log('[SOOT] ✅ Backend responded:', data);
-    } catch (sendErr) {
-      console.error('[SOOT] ❌ Failed to send to backend:', sendErr);
-    }
-
-    return payloads;
-
+    console.log('[SOOT] ✅ All Payloads Ready:', payloads.length);
   } catch (err) {
     console.error('[SOOT] ❌ Clipboard read failed:', err);
+    return [];
+  }
+
+  try {
+    console.log('[SOOT] 🔁 Sending metadata to backend...');
+    const res = await fetch(`${MASH_SERVER_URL}/api/mash/process-entries`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payloads.map(p => p.metadata))
+    });
+
+    const data = await res.json();
+    console.log('[SOOT] ✅ Backend responded with', data.length, 'items');
+
+    data.forEach((item, index) => {
+      const img = document.createElement('img');
+      img.src = `data:image/png;base64,${item.imageBase64}`;
+      img.alt = item.metadata.filename || `Image ${index + 1}`;
+      img.style.width = '200px';
+      img.style.margin = '8px';
+      document.body.appendChild(img);
+    });
+
+    console.log('[SOOT] 🎉 Done displaying images');
+    return data;
+  } catch (sendErr) {
+    console.error('[SOOT] ❌ Failed to send to backend:', sendErr);
     return [];
   }
 }

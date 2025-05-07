@@ -1,14 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>SOOT Clipboard Test</title>
-  </head>
-  <body>
-    <h1>Paste Test</h1>
-    <button id="pasteButton">Paste SOOT Clipboard</button>
-    <div id="output" style="margin-top: 20px;"></div>
+<head>
+  <meta charset="UTF-8" />
+  <title>SOOT Mash Demo</title>
+</head>
+<body>
+  <h1>Paste Test</h1>
+  <button onclick="runProcess()">📋 Paste from Clipboard</button>
 
-    <script type="module" src="./scripts/main.js"></script>
-  </body>
+  <script type="module">
+    import { processSootClipboard } from './scripts/clipboard.js';
+
+    window.runProcess = () => {
+      processSootClipboard().then(() => {
+        console.log('✔ Done!');
+      });
+    };
+  </script>
+</body>
 </html>
