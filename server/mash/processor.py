@@ -131,3 +131,9 @@ def get_all_cached_descriptions() -> List[Dict]:
             filtered = {k: v for k, v in record.items() if k != "imageBase64"}
             cleaned.append(filtered)
         return cleaned
+    
+
+
+def handle_user_prompt(prompt: str):
+    print(f"[🟡] Handling user prompt: {prompt}")
+

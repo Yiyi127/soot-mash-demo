@@ -1,6 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter,Body
 from typing import List
-from .processor import Metadata, process_metadata_entries, get_all_cached_descriptions
+from .processor import Metadata, process_metadata_entries, get_all_cached_descriptions, handle_user_prompt
 
 router = APIRouter()
 
@@ -13,3 +13,11 @@ def process_entries(metadata_list: List[Metadata]):
 def get_descriptions():
     print(f"[📦] Fetching cached descriptions...")
     return get_all_cached_descriptions()
+
+
+
+@router.post("/user-prompt")  
+def user_prompt(prompt: str = Body(..., embed=True)):
+    print(f"[📥] Received user prompt: {prompt}")
+    handle_user_prompt(prompt) 
+    return {"status": "received", "prompt": prompt}

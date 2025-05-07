@@ -192,6 +192,7 @@
 
   <script type="module">
     import { processSootClipboard } from './scripts/clipboard.js';
+    import { sendPromptToBackend } from './scripts/prompt.js';
 
     const button = document.getElementById('pasteButton');
     const container = document.getElementById('mainContainer');
@@ -278,11 +279,13 @@
 
     button.addEventListener('click', () => window.runProcess());
 
-    cliInput.addEventListener('keydown', (e) => {
+    cliInput.addEventListener('keydown', async(e) => {
       if (e.key === 'Enter') {
         const raw = cliInput.value.trim();
         console.log('🟡 Received command:', `mash: ${raw}`);
         cliInput.value = '';
+
+        await sendPromptToBackend(raw);
       }
     });
   </script>
