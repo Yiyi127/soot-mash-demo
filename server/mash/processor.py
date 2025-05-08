@@ -532,7 +532,6 @@ def handle_mash_command(parsed_command: Dict) -> Dict:
     
     return result
   
-
 def handle_mash_all_images() -> Dict:
     """
     Handle 'mash:' command (without parameters) by combining all images in pairs.
@@ -583,11 +582,12 @@ def handle_mash_all_images() -> Dict:
             mash_prompt = f"Apply style from image {i+1} to content of image {j+1}"
             
             try:
-                # Apply the mash operation
+                # Apply the mash operation with skip_upload=True to prevent double upload
                 result = apply_operation_to_image(
                     content_image,  # Use content as base
                     mash_prompt,
-                    source_images
+                    source_images,
+                    skip_upload=True  # Skip the upload in apply_operation_to_image
                 )
                 
                 # Add metadata for tracking
@@ -820,7 +820,8 @@ def generate_unique_filename(prefix: str, extension: str = "png") -> str:
     unique_id = str(uuid.uuid4())[:8]
     return f"{prefix}_{timestamp}_{unique_id}.{extension}"
 
-def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dict = None) -> Dict:
+ 
+def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dict = None, skip_upload: bool = False) -> Dict:
     """
     Apply the user's prompt operation to the selected image
     
@@ -828,6 +829,7 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
         image_record: The selected image record
         prompt: User's prompt for operation
         source_images: Optional dict of source images for mash operations
+        skip_upload: If True, skip the SOOT upload step
         
     Returns:
         Updated image record with results
@@ -844,7 +846,11 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
         # Decode image
         image_bytes = base64.b64decode(image_base64)
         metadata = image_record.get("metadata", {})
-        mime_type = mimetypes.guess_type(metadata.get("filename", "") or "")[0] or "image/png"
+        
+        # Force MIME type to JPEG regardless of what it's detected as
+        # This avoids the "Unsupported MIME type" error
+        mime_type = "image/jpeg"
+        print(f"[🔍] Using fixed MIME type: {mime_type} instead of auto-detection")
         
         # Use the provided prompt directly
         enhanced_prompt = prompt
@@ -869,13 +875,12 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
         if source_images:
             for feature, source_image in source_images.items():
                 if feature != "base" and "imageBase64" in source_image:
-                    source_mime_type = mimetypes.guess_type(
-                        source_image.get("metadata", {}).get("filename", "") or ""
-                    )[0] or "image/png"
+                    # Also force MIME type for source images
+                    print(f"[🔍] Using fixed MIME type for source image {feature}: image/jpeg")
                     
                     parts.append({
                         "inlineData": {
-                            "mimeType": source_mime_type,
+                            "mimeType": "image/jpeg",
                             "data": source_image["imageBase64"]
                         }
                     })
@@ -971,26 +976,30 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
                                 # Add the local filename to the result
                                 result["localFilename"] = filename
                                 
-                                # Upload to SOOT
-                                space_id = image_record.get("metadata", {}).get("spaceId")
-                                if space_id:
-                                    print(f"[🔄] Uploading generated image to SOOT space: {space_id}")
-                                    
-                                    # Upload the generated image
-                                    upload_result = upload_image_to_soot(
-                                        image_data=generated_image_base64,
-                                        space_id=space_id,
-                                        is_base64=True,
-                                        verbose=True
-                                    )
-                                    
-                                    # Store upload result
-                                    result["sootUploadResult"] = upload_result
-                                    
-                                    if upload_result["success"]:
-                                        print(f"[✅] Generated image successfully uploaded to SOOT")
-                                    else:
-                                        print(f"[❌] Failed to upload generated image: {upload_result['message']}")
+                                # Only upload if not skipped
+                                if not skip_upload:
+                                    # Upload to SOOT
+                                    space_id = image_record.get("metadata", {}).get("spaceId")
+                                    if space_id:
+                                        print(f"[🔄] Uploading generated image to SOOT space: {space_id}")
+                                        
+                                        # Upload the generated image
+                                        upload_result = upload_image_to_soot(
+                                            image_data=generated_image_base64,
+                                            space_id=space_id,
+                                            is_base64=True,
+                                            verbose=True
+                                        )
+                                        
+                                        # Store upload result
+                                        result["sootUploadResult"] = upload_result
+                                        
+                                        if upload_result["success"]:
+                                            print(f"[✅] Generated image successfully uploaded to SOOT")
+                                        else:
+                                            print(f"[❌] Failed to upload generated image: {upload_result['message']}")
+                                else:
+                                    print("[ℹ️] Skipping SOOT upload as requested")
                                 
                             except Exception as e:
                                 print(f"[❌] Error saving/uploading image: {e}")
@@ -1018,8 +1027,6 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
             "prompt": prompt,
             "error": str(e)
         }
-    
-
 
 # Add initialization code to load cache at startup
 def initialize_system():
