@@ -72,30 +72,68 @@
       background-color: #fff200;
     }
 
-    .image {
+    #imagesContainer {
       position: absolute;
+      left: 40px;
+      top: 80px;
+      bottom: 80px;
+      width: 120px;
+      overflow-y: auto;  /* Allow manual scrolling */
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-right: 10px;
+      /* Styling for scrollbar */
+      scrollbar-width: thin;
+      scrollbar-color: #faff00 #111;
+    }
+
+    /* Styling for scrollbar in Chrome, Safari and Opera */
+    #imagesContainer::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    #imagesContainer::-webkit-scrollbar-track {
+      background: #111;
+    }
+
+    #imagesContainer::-webkit-scrollbar-thumb {
+      background-color: #faff00;
+      border-radius: 6px;
+    }
+
+    .image {
       width: 90px;
       height: 90px;
       border: 1px solid #faff00;
       background-color: #111;
       object-fit: cover;
       opacity: 0;
-      transform: scale(0.5) rotate(10deg);
-      transition:
-        opacity 1.2s ease,
-        transform 1.2s ease,
-        left 1.4s ease,
-        top 1.4s ease;
+      transform: scale(0.5);
+      transition: opacity 0.8s ease, transform 0.8s ease;
+      flex-shrink: 0;
+      box-shadow: 0 0 5px rgba(250, 255, 0, 0.3);
     }
 
     .image.show {
       opacity: 1;
-      transform: scale(1) rotate(0deg);
+      transform: scale(1);
     }
 
     .image:hover {
       transform: scale(1.06);
       border: 2px solid #faff00;
+      box-shadow: 0 0 10px rgba(250, 255, 0, 0.5);
+    }
+    
+    @keyframes scrollImages {
+      0% {
+        transform: translateY(0);
+      }
+      100% {
+        transform: translateY(-100%);
+      }
     }
 
     #terminal {
@@ -104,31 +142,86 @@
       left: 50%;
       transform: translate(-50%, -50%);
       width: 600px;
-      height: 320px;
+      height: 400px;
       background: #000;
       border: 1px solid #faff00;
       color: #faff00;
-      padding: 24px;
+      padding: 16px;
       font-size: 15px;
       font-family: 'Share Tech Mono', monospace;
       z-index: 9;
       display: flex;
       flex-direction: column;
-      gap: 16px;
       opacity: 0;
       transition: opacity 0.8s ease;
       pointer-events: none;
+      box-shadow: 0 0 20px rgba(250, 255, 0, 0.2);
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    
+    /* Hide scrollbar for all browsers */
+    #terminal::-webkit-scrollbar {
+      display: none;
+    }
+    
+    #terminal {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    #terminalHeader {
+      color: #888;
+      font-size: 13px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 8px;
+    }
+    
+    #terminalOutput {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 12px;
+      min-height: 200px;
+    }
+    
+    .terminalLine {
+      display: flex;
+      margin-bottom: 4px;
+    }
+    
+    .terminalLinePrefix {
+      color: #00ff7f;
+      margin-right: 8px;
+    }
+    
+    .terminalLineContent {
+      flex: 1;
+    }
+    
+    .terminalCommand {
+      color: #faff00;
     }
 
     #cliLine {
       display: flex;
       align-items: center;
-      gap: 8px;
+      position: relative;
+      padding: 4px 0;
+      margin: 30px 0 100px 0; /* Add margin to prevent buttons from covering input */
     }
 
     #cliLine .prompt {
       user-select: none;
-      color: #faff00;
+      color: #00ff7f;
+    }
+
+    #cliLine::before {
+      content: "$";
+      color: #00ff7f;
+      margin-right: 8px;
     }
 
     #cliInput {
@@ -140,6 +233,56 @@
       outline: none;
       flex: 1;
       caret-color: #faff00;
+      z-index: 12;
+    }
+    
+    #cliInput::placeholder {
+      color: rgba(250, 255, 0, 0.3);
+    }
+    
+    #commandButtons {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      max-width: 550px;
+      z-index: 10;
+    }
+
+    #commandButtons {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      max-width: 550px;
+    }
+
+    .cmdButton {
+      background-color: #111;
+      color: #faff00;
+      border: 1px solid #faff00;
+      padding: 6px 12px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 0 4px rgba(250, 255, 0, 0.3);
+    }
+
+    .cmdButton:hover {
+      background-color: #1a1a1a;
+      box-shadow: 0 0 8px rgba(250, 255, 0, 0.5);
+      transform: translateY(-2px);
+    }
+
+    .cmdButton:active {
+      transform: translateY(1px);
     }
 
     #loadingTypewriter {
@@ -165,14 +308,30 @@
         width: 0;
       }
       100% {
-        width: 18ch;
+        width: 14ch;
       }
+    }
+
+    .glow-effect {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: radial-gradient(
+        circle at center,
+        rgba(250, 255, 0, 0.1) 0%,
+        rgba(0, 0, 0, 0) 70%
+      );
+      z-index: 5;
+      top: 0;
+      left: 0;
     }
   </style>
 </head>
 <body>
   <div class="container" id="mainContainer">
     <div id="hudOverlay"></div>
+    <div class="glow-effect"></div>
     <div id="header">SOOT / playground</div>
     <button id="pasteButton">
       <span class="material-symbols-outlined">content_paste</span>
@@ -181,11 +340,29 @@
     </button>
     <div id="loadingTypewriter">loading ...</div>
 
+    <div id="imagesContainer"></div>
+
     <div id="terminal">
-      <div>~/soot ▶</div>
+      <div id="terminalHeader">SOOT Terminal</div>
+      <div id="terminalOutput">
+        <div class="terminalLine">
+          <span class="terminalLineContent">SOOT image processing terminal initialized...</span>
+        </div>
+        <div class="terminalLine">
+          <span class="terminalLinePrefix">system</span>
+          <span class="terminalLineContent">Ready for commands. Use buttons below or type directly.</span>
+        </div>
+      </div>
       <div id="cliLine">
-        <span class="prompt">soot:</span>
-        <input id="cliInput" type="text" placeholder=" " />
+        <input id="cliInput" type="text" placeholder="type command..." />
+      </div>
+      
+      <div id="commandButtons">
+        <button class="cmdButton" data-cmd="tag:">tag:</button>
+        <button class="cmdButton" data-cmd="describe:">describe:</button>
+        <button class="cmdButton" data-cmd="edit:">edit:</button>
+        <button class="cmdButton" data-cmd="mash:">mash:</button>
+        <button class="cmdButton" data-cmd="variation:" data-num-only="true">variation:[#]</button>
       </div>
     </div>
   </div>
@@ -199,6 +376,7 @@
     const terminal = document.getElementById('terminal');
     const cliInput = document.getElementById('cliInput');
     const loadingEl = document.getElementById('loadingTypewriter');
+    const commandButtons = document.querySelectorAll('.cmdButton');
 
     let imageElements = [];
 
@@ -213,6 +391,7 @@
 
       loadingEl.style.display = 'none';
 
+      // First place images in a circular pattern around the button
       const centerX = window.innerWidth / 2;
       const centerY = window.innerHeight / 2;
       const ringSpacing = 230;
@@ -224,6 +403,7 @@
         const img = document.createElement('img');
         img.src = `data:image/png;base64,${item.imageBase64}`;
         img.className = 'image';
+        img.style.position = 'absolute';
         img.style.left = `${centerX - 45}px`;
         img.style.top = `${centerY - 45}px`;
         container.appendChild(img);
@@ -258,34 +438,149 @@
     };
 
     function collapseToSidebar() {
-      const startY = 80;
-      const spacingY = 100;
-
-      imageElements.forEach((img, index) => {
-        img.style.transition = 'all 1s ease';
-        img.style.left = '40px';
-        img.style.top = `${startY + spacingY * index}px`;
+      const imagesContainer = document.getElementById('imagesContainer');
+      
+      // Clear any existing images in the container
+      while (imagesContainer.firstChild) {
+        imagesContainer.removeChild(imagesContainer.firstChild);
+      }
+      
+      // Add all images to the scrollable container
+      imageElements.forEach((img) => {
+        img.style.transition = 'none';
+        img.style.position = 'static';
+        imagesContainer.appendChild(img);
+        
+        // Force reflow to reset transitions
+        void img.offsetWidth;
+        
+        // Re-enable transitions and show image
+        img.style.transition = 'opacity 0.8s ease, transform 0.8s ease';
+        setTimeout(() => {
+          img.classList.add('show');
+        }, 100);
       });
-
+      
+      // Hide the paste button
       button.style.display = 'none';
-
+      
+      // Show the terminal
       terminal.style.display = 'flex';
       terminal.style.pointerEvents = 'auto';
       setTimeout(() => {
         terminal.style.opacity = '1';
         cliInput.focus();
+        
+        // Add a command to terminal output history
+        addTerminalOutput('system', 'Images loaded. Ready for processing.');
       }, 100);
     }
+    
+    // Remove the startImageScrolling function since we're not using it anymore
+    function addTerminalOutput(prefix, content, isCommand = false) {
+      const terminalOutput = document.getElementById('terminalOutput');
+      const line = document.createElement('div');
+      line.className = 'terminalLine';
+      
+      if (prefix) {
+        const prefixSpan = document.createElement('span');
+        prefixSpan.className = 'terminalLinePrefix';
+        prefixSpan.textContent = prefix;
+        line.appendChild(prefixSpan);
+      }
+      
+      const contentSpan = document.createElement('span');
+      contentSpan.className = isCommand ? 'terminalLineContent terminalCommand' : 'terminalLineContent';
+      contentSpan.textContent = content;
+      line.appendChild(contentSpan);
+      
+      terminalOutput.appendChild(line);
+      
+      // Auto-scroll to bottom
+      terminalOutput.scrollTop = terminalOutput.scrollHeight;
+      
+      return line;
+    }
+
+    // Set up command buttons
+    commandButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const command = btn.getAttribute('data-cmd');
+        const isNumOnly = btn.getAttribute('data-num-only') === 'true';
+        
+        if (isNumOnly) {
+          // For variation, show input prompt for numbers only
+          cliInput.value = command + '[';
+          cliInput.focus();
+          
+          // Only allow numbers for variation command
+          const origValue = cliInput.value;
+          const cursorPos = origValue.length;
+          
+          // Set up one-time input validation for the next keypress
+          const numOnlyHandler = (e) => {
+            // Only allow numbers and control keys
+            if (!/^\d$/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key)) {
+              e.preventDefault();
+            }
+            
+            // If they press a number, complete the bracket
+            if (/^\d$/.test(e.key)) {
+              setTimeout(() => {
+                const currentPos = cliInput.selectionStart;
+                cliInput.value = cliInput.value.substring(0, currentPos) + ']' + cliInput.value.substring(currentPos);
+                cliInput.setSelectionRange(currentPos + 1, currentPos + 1);
+              }, 0);
+              
+              // Remove this special handler after first number is entered
+              cliInput.removeEventListener('keydown', numOnlyHandler);
+            }
+          };
+          
+          cliInput.addEventListener('keydown', numOnlyHandler);
+        } else {
+          // For normal commands
+          cliInput.value = command + ' ';
+          cliInput.focus();
+        }
+        
+        // Add flash effect
+        btn.style.backgroundColor = '#faff00';
+        btn.style.color = '#000';
+        setTimeout(() => {
+          btn.style.backgroundColor = '';
+          btn.style.color = '';
+        }, 150);
+      });
+    });
 
     button.addEventListener('click', () => window.runProcess());
 
     cliInput.addEventListener('keydown', async(e) => {
       if (e.key === 'Enter') {
         const raw = cliInput.value.trim();
-        console.log('🟡 Received command:', `mash: ${raw}`);
-        cliInput.value = '';
-
-        await sendPromptToBackend(raw);
+        if (raw) {
+          console.log('🟡 Received command:', raw);
+          
+          // Add command to terminal history
+          addTerminalOutput('user', raw, true);
+          
+          // Clear input
+          cliInput.value = '';
+          
+          // Simulate processing
+          const processingLine = addTerminalOutput('system', 'Processing command...');
+          
+          try {
+            await sendPromptToBackend(raw);
+            // Replace processing message with success message
+            processingLine.querySelector('.terminalLineContent').textContent = 'Command executed successfully.';
+          } catch (error) {
+            // Replace processing message with error message
+            processingLine.querySelector('.terminalLineContent').textContent = 'Error: ' + (error.message || 'Command failed');
+            processingLine.querySelector('.terminalLineContent').style.color = '#ff4d4d';
+          }
+        }
       }
     });
   </script>
