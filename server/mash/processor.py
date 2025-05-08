@@ -391,8 +391,13 @@ def parse_user_command(command: str) -> dict:
     
     command = command.strip()
     
+    # Parse variation command (with number pattern)
+    if command.lower().startswith("variation:") or re.match(r'^variation:\[\d+\]$', command.lower()):
+        result["command_type"] = "variation"
+        result["parameters"] = command[10:].strip()  # Remove "variation:" prefix
+    
     # Parse edit command
-    if command.lower() == "edit:" or command.lower().startswith("edit:"):
+    elif command.lower() == "edit:" or command.lower().startswith("edit:"):
         result["command_type"] = "edit"
         result["parameters"] = command[5:].strip()
     
@@ -694,11 +699,15 @@ def handle_user_prompt(prompt: str):
     
     # Handle describe commands
     elif parsed_command["command_type"] == "describe":
-        return handle_description_command(parsed_command)
+        return handle_describe_command(parsed_command)
     
     # Handle edit commands
     elif parsed_command["command_type"] == "edit":
         return handle_edit_command(parsed_command)
+    
+    # Handle variation commands
+    elif parsed_command["command_type"] == "variation":
+        return handle_variation_command(parsed_command)
     
     # For standard prompts or unknown commands
     else:
@@ -1104,7 +1113,7 @@ def handle_tag_command(parsed_command: Dict) -> Dict:
     }
 
 
-def handle_description_command(parsed_command: Dict) -> Dict:
+def handle_describe_command(parsed_command: Dict) -> Dict:
     """
     Handle describe command by generating specialized descriptions for all images based on the user's prompt.
     This creates a separate set of user descriptions while preserving the original system descriptions.
@@ -1266,4 +1275,105 @@ def handle_edit_command(parsed_command: Dict) -> Dict:
         "total_images": total_images,
         "edited_images": len(edited_images),
         "images": edited_images
+    }
+
+
+
+
+def handle_variation_command(parsed_command: Dict) -> Dict:
+    """
+    Handle variation command by generating a specified number of variations for each image.
+    The command format is 'variation:[n]' where n is the number of variations to generate.
+    
+    Args:
+        parsed_command: Parsed command information
+        
+    Returns:
+        Result of the operation with generated variations
+    """
+    print(f"[🔄] Processing variation command: {parsed_command}")
+    
+    parameters = parsed_command.get("parameters", "").strip()
+    
+    # Extract the number of variations from the command (format: variation:[n])
+    variation_count = 1  # Default to 1 variation if not specified
+    number_match = re.search(r'\[(\d+)\]', parameters)
+    if number_match:
+        try:
+            variation_count = int(number_match.group(1))
+            # Limit to a reasonable number to prevent abuse
+            variation_count = min(max(1, variation_count), 5)
+        except ValueError:
+            pass
+    
+    print(f"[🔄] Generating {variation_count} variations for each image")
+    
+    # Get all images from current session
+    with cache_lock:
+        all_images = list(current_session_cache.values())
+        
+    if not all_images:
+        return {"error": "No images available in current session"}
+    
+    total_images = len(all_images)
+    total_variations = total_images * variation_count
+    
+    print(f"[🔄] Processing {total_images} source images to create {total_variations} variations")
+    
+    # Prepare array to store all variations
+    all_variations = []
+    
+    for i, image in enumerate(all_images):
+        image_variations = []
+        
+        try:
+            # Get image data
+            image_base64 = image.get("imageBase64", "")
+            if not image_base64:
+                print(f"[⚠️] No image data available for image {i+1}")
+                continue
+            
+            print(f"[🔄] Generating {variation_count} variations for image {i+1}/{total_images}")
+            
+            # Generate variations for this image
+            for v in range(variation_count):
+                try:
+                    # Create variation prompt 
+                    variation_prompt = f"Create a visually distinctive variation of this image with different composition, lighting, or style. Variation {v+1} of {variation_count}."
+                    
+                    # Apply the operation to create variation
+                    result = apply_operation_to_image(image, variation_prompt)
+                    
+                    # Add metadata for tracking
+                    result["sourceImageId"] = image.get("instanceId")
+                    result["variationNumber"] = v + 1
+                    result["totalVariations"] = variation_count
+                    
+                    # Add to results
+                    image_variations.append(result)
+                    all_variations.append(result)
+                    
+                    print(f"[✅] Completed variation {v+1}/{variation_count} for image {i+1}/{total_images}")
+                    
+                except Exception as e:
+                    print(f"[❌] Error creating variation {v+1} for image {i+1}: {e}")
+                    error_result = {
+                        "sourceImageId": image.get("instanceId"),
+                        "variationNumber": v + 1,
+                        "totalVariations": variation_count,
+                        "error": f"Failed to create variation: {str(e)}"
+                    }
+                    image_variations.append(error_result)
+                    all_variations.append(error_result)
+            
+        except Exception as e:
+            print(f"[❌] Error processing variations for image {i+1}: {e}")
+    
+    # Return the results
+    return {
+        "command": f"variation:[{variation_count}]",
+        "total_source_images": total_images,
+        "variation_count": variation_count,
+        "total_variations": len(all_variations),
+        "variations": all_variations
     }
