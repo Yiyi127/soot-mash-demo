@@ -381,7 +381,8 @@ def parse_user_command(command: str) -> dict:
         "command_type": "unknown",
         "original_command": command,
         "parameters": "",
-        "mash_info": None
+        "mash_info": None,
+        "tag_info": None
     }
     
     # Check for empty command
@@ -390,8 +391,13 @@ def parse_user_command(command: str) -> dict:
     
     command = command.strip()
     
+    # Parse tag command
+    if command.lower() == "tag:" or command.lower().startswith("tag:"):
+        result["command_type"] = "tag"
+        result["parameters"] = command[4:].strip()
+        
     # Parse mash command - checking for "mash:" exactly
-    if command.lower() == "mash:" or command.lower().startswith("mash:"):
+    elif command.lower() == "mash:" or command.lower().startswith("mash:"):
         result["command_type"] = "mash"
         result["parameters"] = command[5:].strip()
         
@@ -671,6 +677,10 @@ def handle_user_prompt(prompt: str):
     # Route to the appropriate handler based on command type
     if parsed_command["command_type"] == "mash":
         return handle_mash_command(parsed_command)
+    
+    # Handle tag commands
+    elif parsed_command["command_type"] == "tag":
+        return handle_tag_command(parsed_command)
     
     # For standard prompts or unknown commands
     else:
@@ -954,3 +964,122 @@ def initialize_system():
 # Make sure this is at the end of the file
 if __name__ != "__main__":  # Only when imported, not when run directly
     initialize_system()
+
+def handle_tag_command(parsed_command: Dict) -> Dict:
+    """
+    Handle tag command by generating specialized tags for all images based on the user's prompt.
+    This creates a separate set of user tags while preserving the original system tags.
+    
+    Args:
+        parsed_command: Parsed command information
+        
+    Returns:
+        Result of the operation with updated images
+    """
+    print(f"[🏷️] Processing tag command: {parsed_command}")
+    
+    parameters = parsed_command.get("parameters", "").strip()
+    
+    # Get all images from current session
+    with cache_lock:
+        all_images = list(current_session_cache.values())
+        
+    if not all_images:
+        return {"error": "No images available in current session"}
+    
+    total_images = len(all_images)
+    print(f"[🏷️] Generating user tags for {total_images} images with prompt: '{parameters}'")
+    
+    # Prepare array to store all updated images
+    updated_images = []
+    
+    for i, image in enumerate(all_images):
+        try:
+            # Get image data
+            image_base64 = image.get("imageBase64", "")
+            if not image_base64:
+                print(f"[⚠️] No image data available for image {i+1}")
+                continue
+            
+            # Keep system tags
+            system_tags = image.get("tags", [])
+            
+            # Decode image for processing
+            image_bytes = base64.b64decode(image_base64)
+            metadata = image.get("metadata", {})
+            mime_type = mimetypes.guess_type(metadata.get("filename", "") or "")[0] or "image/png"
+            
+            # Determine which prompt to use based on parameters
+            if parameters:
+                # Custom prompt focused on user's specific parameter
+                prompt_text = f"Generate 8-12 detailed, lowercase tags that ONLY describe aspects of '{parameters}' in this image. Focus exclusively on how '{parameters}' is represented, experienced, or evoked in the image. Do not include any technical tags (like saturation, contrast, etc.) unless they directly relate to '{parameters}'. Return only a JSON array of string tags."
+            else:
+                # General tagging prompt (same as our default one)
+                prompt_text = "Generate 8-12 detailed, lowercase tags that thoroughly describe this image. Include tags for: 1) Visual style (e.g., portrait, landscape, abstract), 2) Technical aspects (saturation level, contrast level, black and white if applicable), 3) Subject matter and content, 4) Mood or emotion, 5) Composition, 6) Lighting conditions, 7) Color palette. Return only a JSON array of string tags."
+            
+            # Generate tags using the appropriate prompt
+            response = model.generate_content([
+                {"mime_type": mime_type, "data": image_bytes},
+                {"text": prompt_text}
+            ])
+            
+            tags_text = response.text.strip()
+            
+            # Handle if the response comes in a code block format
+            if "```json" in tags_text:
+                tags_text = tags_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in tags_text:
+                tags_text = tags_text.split("```")[1].split("```")[0].strip()
+                
+            # Parse JSON tags
+            user_tags = []
+            if tags_text.startswith("["):
+                try:
+                    user_tags = json.loads(tags_text)
+                    print(f"[🏷️] User tags generated for image {i+1}: {user_tags}")
+                except json.JSONDecodeError as e:
+                    print(f"[⚠️] JSON decode error for image {i+1}: {e}")
+                    # Extract tags manually as fallback
+                    potential_tags = re.findall(r'"([^"]*)"', tags_text)
+                    if potential_tags:
+                        print(f"[🏷️] Tags extracted manually for image {i+1}: {potential_tags}")
+                        user_tags = potential_tags
+            else:
+                print(f"[⚠️] Tag format unexpected for image {i+1}: {tags_text}")
+            
+            # Update the image record with both sets of tags
+            updated_image = image.copy()
+            updated_image["system_tags"] = system_tags  # Original system-generated tags
+            updated_image["user_tags"] = user_tags     # New user-command generated tags
+            
+            # For backward compatibility, keep the original tags field unchanged
+            # This ensures existing code that uses tags[] still works
+            updated_image["tags"] = system_tags
+            
+            # Update the cache
+            with cache_lock:
+                instance_id = image.get("instanceId")
+                if instance_id:
+                    current_session_cache[instance_id] = updated_image
+                    description_cache[instance_id] = updated_image
+            
+            # Add to results - include both sets of tags
+            updated_images.append({
+                "instanceId": instance_id,
+                "system_tags": system_tags,
+                "user_tags": user_tags,
+                "description": image.get("description", "")
+            })
+            
+            print(f"[✅] Added user tags for image {i+1}/{total_images}")
+            
+        except Exception as e:
+            print(f"[❌] Error updating tags for image {i+1}: {e}")
+    
+    # Return the results
+    return {
+        "command": f"tag:{parameters}",
+        "total_images": total_images,
+        "updated_images": len(updated_images),
+        "images": updated_images
+    }
