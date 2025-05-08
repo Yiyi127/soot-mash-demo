@@ -528,7 +528,7 @@ def handle_mash_command(parsed_command: Dict) -> Dict:
     base_image = source_images[base_feature]
     
     # Apply the mash operation
-    result = apply_operation_to_image(base_image, parsed_command["original_command"], source_images)
+    result = apply_operation_to_image(base_image, parsed_command["original_command"], source_images, skip_upload=False)
     
     return result
   
@@ -650,7 +650,6 @@ def handle_mash_all_images() -> Dict:
         "actual_combinations": len(all_combinations),
         "combinations": all_combinations
     }
-
 def find_and_mash_best_matches(prompt: str) -> Dict:
     """
     Find two best matching images for the given prompt and mash them together
@@ -689,11 +688,12 @@ def find_and_mash_best_matches(prompt: str) -> Dict:
     content_desc = content_match.get("description", "unknown content")
     mash_prompt = f"Apply the style of '{style_desc}' to the content of '{content_desc}'"
     
-    # Apply the mash operation
+    # Apply the mash operation with skip_upload=False to ensure upload to SOOT
     result = apply_operation_to_image(
         content_match,  # Use content as base
         mash_prompt,
-        source_images
+        source_images,
+        skip_upload=False
     )
     
     # Add metadata about the matches
@@ -703,6 +703,8 @@ def find_and_mash_best_matches(prompt: str) -> Dict:
     result["contentImageDescription"] = content_desc
     
     return result
+
+
 
 def handle_user_prompt(prompt: str):
     """
@@ -748,7 +750,7 @@ def handle_user_prompt(prompt: str):
             return {"error": "No suitable image found for the prompt"}
         
         # Apply operation to image
-        result = apply_operation_to_image(best_match, parsed_command["parameters"])
+        result = apply_operation_to_image(best_match, parsed_command["parameters"], skip_upload=False)
         
         return result
 
@@ -1273,7 +1275,6 @@ def handle_describe_command(parsed_command: Dict) -> Dict:
     }
 
 
-
 def handle_edit_command(parsed_command: Dict) -> Dict:
     """
     Handle edit command by modifying images according to the user's instructions.
@@ -1315,7 +1316,8 @@ def handle_edit_command(parsed_command: Dict) -> Dict:
             print(f"[✏️] Applying edit to image {i+1}/{total_images}: '{parameters}'")
             
             # Apply the edit operation using the existing apply_operation_to_image function
-            result = apply_operation_to_image(image, f"Edit this image: {parameters}")
+            # Ensure upload to SOOT by setting skip_upload=False
+            result = apply_operation_to_image(image, f"Edit this image: {parameters}", skip_upload=False)
             
             # Add to results
             edited_images.append(result)
@@ -1337,8 +1339,6 @@ def handle_edit_command(parsed_command: Dict) -> Dict:
         "edited_images": len(edited_images),
         "images": edited_images
     }
-
-
 
 
 def handle_variation_command(parsed_command: Dict) -> Dict:
@@ -1402,8 +1402,8 @@ def handle_variation_command(parsed_command: Dict) -> Dict:
                     # Create variation prompt 
                     variation_prompt = f"Create a visually distinctive variation of this image with different composition, lighting, or style. Variation {v+1} of {variation_count}."
                     
-                    # Apply the operation to create variation
-                    result = apply_operation_to_image(image, variation_prompt)
+                    # Apply the operation to create variation - ensure upload to SOOT by setting skip_upload=False
+                    result = apply_operation_to_image(image, variation_prompt, skip_upload=False)
                     
                     # Add metadata for tracking
                     result["sourceImageId"] = image.get("instanceId")
