@@ -4,7 +4,8 @@ import base64
 import mimetypes
 import threading
 import json
-from typing import List, Dict, Tuple, Optional
+import re
+from typing import List, Dict, Tuple, Optional, Union
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import google.generativeai as genai
@@ -43,16 +44,23 @@ def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
             image_bytes = res.content
             image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
+            # Save the image locally so you can see it
+            local_filename = f"original_{meta.instanceId[:6]}.png"
+            with open(local_filename, "wb") as f:
+                f.write(image_bytes)
+            print(f"[💾] Saved original image to {local_filename}")
+
             frontend_payloads.append({
                 "metadata": meta.dict(),
-                "imageBase64": image_base64
+                "imageBase64": image_base64,
+                "localFilename": local_filename  # Add local filename to the payload
             })
 
             print(f"[📤] Payload ready for frontend: {meta.filename or meta.instanceId[:6]}")
 
             threading.Thread(
                 target=_generate_and_cache_description,
-                args=(meta, image_base64)
+                args=(meta, image_base64, local_filename)
             ).start()
 
         except Exception as e:
@@ -62,7 +70,7 @@ def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
     print(f"[✅] Total payloads returned: {len(frontend_payloads)}")
     return frontend_payloads
 
-def _generate_and_cache_description(meta: Metadata, image_base64: str):
+def _generate_and_cache_description(meta: Metadata, image_base64: str, local_filename: str):
     try:
         print(f"[⏳] Starting description generation for {meta.instanceId[:6]}")
         description, raw_response = generate_description(image_base64, meta)
@@ -74,7 +82,8 @@ def _generate_and_cache_description(meta: Metadata, image_base64: str):
             "imageBase64": image_base64,
             "description": description,
             "tags": tags,
-            "rawResponse": raw_response
+            "rawResponse": raw_response,
+            "localFilename": local_filename  # Store local filename in record
         }
 
         with cache_lock:
@@ -111,20 +120,18 @@ def generate_tags(image_base64: str, meta: Metadata) -> List[str]:
 
         response = model.generate_content([
             {"mime_type": mime_type, "data": image_bytes},
-            {"text": "List 3 to 5 concise, lowercase tags that best describe the image content. Return only a JSON array."}
+            {"text": "List 5 to 8 concise, lowercase tags that best describe the image content. Include tags for style, background, foreground, composition, and lighting. Return only a JSON array."}
         ])
 
         tags_text = response.text.strip()
         
         # Handle if the response comes in a code block format
         if "```json" in tags_text:
-            # Extract the JSON part from inside the code block
             tags_text = tags_text.split("```json")[1].split("```")[0].strip()
         elif "```" in tags_text:
-            # Handle other code block formats without language specification
             tags_text = tags_text.split("```")[1].split("```")[0].strip()
             
-        # Now try to parse the JSON
+        # Parse JSON tags
         if tags_text.startswith("["):
             try:
                 tags = json.loads(tags_text)
@@ -132,9 +139,7 @@ def generate_tags(image_base64: str, meta: Metadata) -> List[str]:
                 return tags
             except json.JSONDecodeError as e:
                 print(f"[⚠️] JSON decode error: {e}")
-                # Try to extract tags manually as fallback
-                import re
-                # Look for anything in quotes
+                # Extract tags manually as fallback
                 potential_tags = re.findall(r'"([^"]*)"', tags_text)
                 if potential_tags:
                     print(f"[🏷️] Tags extracted manually: {potential_tags}")
@@ -155,6 +160,71 @@ def get_all_cached_descriptions() -> List[Dict]:
             filtered = {k: v for k, v in record.items() if k != "imageBase64"}
             cleaned.append(filtered)
         return cleaned
+
+def parse_mash_command(prompt: str) -> Dict:
+    """
+    Parse a mash command to extract feature filters and source references
+    
+    Args:
+        prompt: User's mash command (e.g., "mash style from:1 content from:2")
+        
+    Returns:
+        Dictionary with parsed command information
+    """
+    result = {
+        "is_mash": False,
+        "original_prompt": prompt,
+        "features": {},
+        "sources": {},
+    }
+    
+    # Check if it's a mash command
+    if not prompt.lower().startswith("mash "):
+        return result
+    
+    # Mark as mash command
+    result["is_mash"] = True
+    
+    # Extract the mash instruction part (everything after "mash ")
+    mash_instruction = prompt[5:].strip()
+    
+    # Extract feature filters and their sources
+    current_feature = None
+    
+    for part in mash_instruction.split():
+        if "from:" in part:
+            # This is a source reference (e.g., "from:1")
+            source_index_match = re.search(r'from:(\d+)', part)
+            if source_index_match and current_feature:
+                try:
+                    source_index = int(source_index_match.group(1))
+                    result["sources"][current_feature] = source_index
+                except ValueError:
+                    pass
+        else:
+            # This is a feature (e.g., "style", "background", etc.)
+            current_feature = part.lower()
+            result["features"][current_feature] = True
+    
+    return result
+
+def get_image_by_index(index: int) -> Optional[Dict]:
+    """
+    Get an image from the cache by its index (1-based)
+    
+    Args:
+        index: 1-based index of the image in the cache
+        
+    Returns:
+        The image record or None if not found
+    """
+    with cache_lock:
+        all_images = list(description_cache.values())
+        # Convert 1-based index to 0-based index
+        idx = index - 1
+        if 0 <= idx < len(all_images):
+            return all_images[idx]
+    return None
 
 def find_best_matching_image(prompt: str) -> Optional[Dict]:
     """
@@ -233,13 +303,14 @@ def find_best_matching_image(prompt: str) -> Optional[Dict]:
         
     return best_match
 
-def apply_operation_to_image(image_record: Dict, prompt: str) -> Dict:
+def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dict = None) -> Dict:
     """
     Apply the user's prompt operation to the selected image
     
     Args:
         image_record: The selected image record
         prompt: User's prompt for operation
+        source_images: Optional dict of source images for mash operations
         
     Returns:
         Updated image record with results
@@ -258,24 +329,75 @@ def apply_operation_to_image(image_record: Dict, prompt: str) -> Dict:
         metadata = image_record.get("metadata", {})
         mime_type = mimetypes.guess_type(metadata.get("filename", "") or "")[0] or "image/png"
         
-        # Use our tested image generation model and parameters
+        # Create a more specific prompt for Gemini based on the operation
+        enhanced_prompt = prompt
+        
+        # If this is a mash operation with source images
+        if source_images:
+            enhanced_prompt = "Create a new image that combines: "
+            
+            # Add details for each source image and its feature
+            for feature, source_image in source_images.items():
+                source_desc = source_image.get("description", "")
+                if feature == "style":
+                    enhanced_prompt += f"the visual style from '{source_desc}', "
+                elif feature == "content":
+                    enhanced_prompt += f"the content and subjects from '{source_desc}', "
+                elif feature == "background":
+                    enhanced_prompt += f"the background elements from '{source_desc}', "
+                elif feature == "foreground":
+                    enhanced_prompt += f"the foreground elements from '{source_desc}', "
+                elif feature == "composition":
+                    enhanced_prompt += f"the composition from '{source_desc}', "
+                elif feature == "lighting":
+                    enhanced_prompt += f"the lighting qualities from '{source_desc}', "
+                else:
+                    enhanced_prompt += f"the {feature} from '{source_desc}', "
+            
+            # Remove trailing comma and space
+            enhanced_prompt = enhanced_prompt.rstrip(", ")
+        
+        print(f"[✏️] Enhanced prompt: {enhanced_prompt}")
+        
+        # Use image generation model
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_IMAGE_MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
         
-        # Correctly formatted payload with inlineData instead of inline_data
+        # Prepare parts for the request
+        parts = []
+        
+        # First add the main image
+        parts.append({
+            "inlineData": {
+                "mimeType": mime_type,
+                "data": image_base64
+            }
+        })
+        
+        # Add source images for mash operations
+        if source_images:
+            for feature, source_image in source_images.items():
+                if feature != "base" and "imageBase64" in source_image:
+                    source_mime_type = mimetypes.guess_type(
+                        source_image.get("metadata", {}).get("filename", "") or ""
+                    )[0] or "image/png"
+                    
+                    parts.append({
+                        "inlineData": {
+                            "mimeType": source_mime_type,
+                            "data": source_image["imageBase64"]
+                        }
+                    })
+        
+        # Add the text prompt at the end
+        parts.append({
+            "text": enhanced_prompt
+        })
+        
+        # Format payload
         payload = {
             "contents": [
                 {
-                    "parts": [
-                        {
-                            "inlineData": {
-                                "mimeType": mime_type,
-                                "data": image_base64
-                            }
-                        },
-                        {
-                            "text": f"Based on this image, {prompt}"
-                        }
-                    ]
+                    "parts": parts
                 }
             ],
             "generationConfig": {
@@ -314,8 +436,18 @@ def apply_operation_to_image(image_record: Dict, prompt: str) -> Dict:
         result = {
             "originalInstanceId": image_record["instanceId"],
             "prompt": prompt,
+            "enhancedPrompt": enhanced_prompt,
             "result": {}
         }
+        
+        # If this was a mash command, add source information
+        if source_images:
+            result["mashSources"] = {}
+            for feature, source_image in source_images.items():
+                result["mashSources"][feature] = {
+                    "instanceId": source_image["instanceId"],
+                    "description": source_image.get("description", "")
+                }
         
         # Extract image data from response
         if 'candidates' in result_json and result_json['candidates']:
@@ -325,13 +457,75 @@ def apply_operation_to_image(image_record: Dict, prompt: str) -> Dict:
                         # Check for image data
                         if 'inlineData' in part and 'data' in part['inlineData']:
                             # Image data is Base64 encoded
-                            result["result"]["imageBase64"] = part['inlineData']['data']
+                            generated_image_base64 = part['inlineData']['data']
+                            result["result"]["imageBase64"] = generated_image_base64
                             print("[✅] Generated new image successfully")
+                            
+                            # Save the generated image to local file for viewing
+                            try:
+                                image_data = base64.b64decode(generated_image_base64)
+                                
+                                # Generate a filename using the original image ID and the prompt
+                                original_id = image_record["instanceId"][:6]
+                                safe_prompt = "".join(c for c in prompt[:20] if c.isalnum() or c.isspace()).replace(" ", "_")
+                                filename = f"generated_{original_id}_{safe_prompt}.png"
+                                
+                                # Save the image
+                                with open(filename, "wb") as f:
+                                    f.write(image_data)
+                                print(f"[💾] Saved generated image to {filename}")
+                                
+                                # Add the local filename to the result
+                                result["localFilename"] = filename
+                                
+                                # Create a simple HTML file to view the image
+                                html_filename = f"view_{original_id}_{safe_prompt}.html"
+                                with open(html_filename, "w") as f:
+                                    f.write(f"""
+                                    <!DOCTYPE html>
+                                    <html>
+                                    <head>
+                                        <title>Generated Image</title>
+                                        <style>
+                                            body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
+                                            h1 {{ color: #333; }}
+                                            .image-container {{ margin: 20px 0; }}
+                                            img {{ max-width: 100%; border: 1px solid #ddd; }}
+                                            .details {{ background: #f9f9f9; padding: 15px; border-radius: 5px; }}
+                                        </style>
+                                    </head>
+                                    <body>
+                                        <h1>Generated Image</h1>
+                                        <div class="details">
+                                            <p><strong>Prompt:</strong> {prompt}</p>
+                                            <p><strong>Enhanced Prompt:</strong> {enhanced_prompt}</p>
+                                        </div>
+                                        <div class="image-container">
+                                            <h2>Generated Image</h2>
+                                            <img src="{filename}" alt="Generated image">
+                                        </div>
+                                        <div class="image-container">
+                                            <h2>Original Image</h2>
+                                            <img src="{image_record.get('localFilename', '')}" alt="Original image">
+                                        </div>
+                                    </body>
+                                    </html>
+                                    """)
+                                print(f"[🌐] Created HTML viewer: {html_filename}")
+                                result["htmlViewer"] = html_filename
+                                
+                            except Exception as e:
+                                print(f"[❌] Error saving image: {e}")
                         
                         # If there is text response
                         if 'text' in part:
                             result["result"]["description"] = part['text']
                             print(f"[📝] Generation description: {part['text'][:100]}...")
+        
+        # Add all the original image metadata to preserve context
+        result["originalMetadata"] = image_record.get("metadata", {})
+        result["originalDescription"] = image_record.get("description", "")
+        result["originalTags"] = image_record.get("tags", [])
         
         return result
     
@@ -357,7 +551,47 @@ def handle_user_prompt(prompt: str):
     """
     print(f"[🟡] Handling user prompt: {prompt}")
     
-    # Find best matching image
+    # Parse mash command if present
+    parsed_command = parse_mash_command(prompt)
+    
+    # If this is a mash command
+    if parsed_command["is_mash"]:
+        print(f"[🔀] Processing mash command: {parsed_command}")
+        
+        # Collect all source images
+        source_images = {}
+        
+        # Check if we have valid sources
+        if not parsed_command["sources"]:
+            return {"error": "Invalid mash command. Please specify sources with 'from:X' syntax"}
+        
+        # Get source images for each feature
+        for feature, source_index in parsed_command["sources"].items():
+            source_image = get_image_by_index(source_index)
+            if source_image:
+                source_images[feature] = source_image
+                print(f"[🔍] Found source for {feature}: image #{source_index} ({source_image['instanceId'][:6]})")
+            else:
+                print(f"[⚠️] Source not found for {feature}: image #{source_index}")
+        
+        # Check if we have enough sources
+        if len(source_images) < len(parsed_command["sources"]):
+            return {"error": "One or more source images not found"}
+        
+        # Determine the base image (either specified as "base" or the first source)
+        base_feature = next((f for f in parsed_command["sources"].keys() if f == "base"), None)
+        if not base_feature:
+            # If no explicit base, use the first source
+            base_feature = next(iter(parsed_command["sources"].keys()))
+        
+        base_image = source_images[base_feature]
+        
+        # Apply the mash operation
+        result = apply_operation_to_image(base_image, parsed_command["original_prompt"], source_images)
+        
+        return result
+    
+    # For standard prompts
     best_match = find_best_matching_image(prompt)
     
     if not best_match:
@@ -366,30 +600,14 @@ def handle_user_prompt(prompt: str):
     # Apply operation to image
     result = apply_operation_to_image(best_match, prompt)
     
-    # Save the generated image to local file for inspection
-    if "result" in result and "imageBase64" in result["result"]:
-        try:
-            # Decode the base64 image
-            image_data = base64.b64decode(result["result"]["imageBase64"])
-            
-            # Generate a filename using the original image ID and the prompt
-            original_id = best_match["instanceId"][:6]
-            safe_prompt = "".join(x for x in prompt if x.isalnum() or x.isspace()).replace(" ", "_")[:30]
-            filename = f"generated_{original_id}_{safe_prompt}.png"
-            
-            # Save the image
-            with open(filename, "wb") as f:
-                f.write(image_data)
-            print(f"[💾] Saved generated image to {filename}")
-            
-            # Add the local filename to the result
-            result["localFilename"] = filename
-            
-            # Add all the original image metadata to preserve context
-            result["originalMetadata"] = best_match.get("metadata", {})
-            result["originalDescription"] = best_match.get("description", "")
-            result["originalTags"] = best_match.get("tags", [])
-        except Exception as e:
-            print(f"[❌] Error saving image: {e}")
-    
     return result
+
+# Example usage:
+if __name__ == "__main__":
+    # Example 1: Process a simple prompt
+    result = handle_user_prompt("a futuristic cityscape at night")
+    print(json.dumps(result, indent=2))
+    
+    # Example 2: Process a mash command (after loading some images)
+    # result = handle_user_prompt("mash style from:1 content from:2")
+    # print(json.dumps(result, indent=2))
