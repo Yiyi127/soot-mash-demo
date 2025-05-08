@@ -391,10 +391,15 @@ def parse_user_command(command: str) -> dict:
     
     command = command.strip()
     
+    # Parse edit command
+    if command.lower() == "edit:" or command.lower().startswith("edit:"):
+        result["command_type"] = "edit"
+        result["parameters"] = command[5:].strip()
+    
     # Parse description command
-    if command.lower() == "describe:" or command.lower().startswith("describe:"):
+    elif command.lower() == "describe:" or command.lower().startswith("describe:"):
         result["command_type"] = "describe"
-        result["parameters"] = command[8:].strip()
+        result["parameters"] = command[9:].strip()
     
     # Parse tag command
     elif command.lower() == "tag:" or command.lower().startswith("tag:"):
@@ -687,9 +692,13 @@ def handle_user_prompt(prompt: str):
     elif parsed_command["command_type"] == "tag":
         return handle_tag_command(parsed_command)
     
-    # Handle description commands
+    # Handle describe commands
     elif parsed_command["command_type"] == "describe":
         return handle_description_command(parsed_command)
+    
+    # Handle edit commands
+    elif parsed_command["command_type"] == "edit":
+        return handle_edit_command(parsed_command)
     
     # For standard prompts or unknown commands
     else:
@@ -703,6 +712,7 @@ def handle_user_prompt(prompt: str):
         result = apply_operation_to_image(best_match, parsed_command["parameters"])
         
         return result
+
 
 def save_cache_to_disk():
     """Save current cache to disk for persistence"""
@@ -1190,4 +1200,70 @@ def handle_description_command(parsed_command: Dict) -> Dict:
         "total_images": total_images,
         "updated_images": len(updated_images),
         "images": updated_images
+    }
+
+
+
+def handle_edit_command(parsed_command: Dict) -> Dict:
+    """
+    Handle edit command by modifying images according to the user's instructions.
+    
+    Args:
+        parsed_command: Parsed command information
+        
+    Returns:
+        Result of the operation with edited images
+    """
+    print(f"[✏️] Processing edit command: {parsed_command}")
+    
+    parameters = parsed_command.get("parameters", "").strip()
+    
+    if not parameters:
+        return {"error": "Edit command requires specific instructions. Please use 'edit: your instructions'."}
+    
+    # Get all images from current session
+    with cache_lock:
+        all_images = list(current_session_cache.values())
+        
+    if not all_images:
+        return {"error": "No images available in current session"}
+    
+    total_images = len(all_images)
+    print(f"[✏️] Editing {total_images} images with instructions: '{parameters}'")
+    
+    # Prepare array to store all edited images
+    edited_images = []
+    
+    for i, image in enumerate(all_images):
+        try:
+            # Get image data
+            image_base64 = image.get("imageBase64", "")
+            if not image_base64:
+                print(f"[⚠️] No image data available for image {i+1}")
+                continue
+            
+            print(f"[✏️] Applying edit to image {i+1}/{total_images}: '{parameters}'")
+            
+            # Apply the edit operation using the existing apply_operation_to_image function
+            result = apply_operation_to_image(image, f"Edit this image: {parameters}")
+            
+            # Add to results
+            edited_images.append(result)
+            
+            print(f"[✅] Completed edit for image {i+1}/{total_images}")
+            
+        except Exception as e:
+            print(f"[❌] Error editing image {i+1}: {e}")
+            edited_images.append({
+                "originalInstanceId": image.get("instanceId"),
+                "prompt": f"Edit this image: {parameters}",
+                "error": str(e)
+            })
+    
+    # Return the results
+    return {
+        "command": f"edit:{parameters}",
+        "total_images": total_images,
+        "edited_images": len(edited_images),
+        "images": edited_images
     }
