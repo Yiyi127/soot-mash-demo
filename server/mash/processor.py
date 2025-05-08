@@ -43,8 +43,6 @@ def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
             res.raise_for_status()
             image_bytes = res.content
             image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-
-            # Removed local file saving for original images
             
             frontend_payloads.append({
                 "metadata": meta.dict(),
@@ -156,53 +154,6 @@ def get_all_cached_descriptions() -> List[Dict]:
             cleaned.append(filtered)
         return cleaned
 
-def parse_mash_command(prompt: str) -> Dict:
-    """
-    Parse a mash command to extract feature filters and source references
-    
-    Args:
-        prompt: User's mash command (e.g., "mash style from:1 content from:2")
-        
-    Returns:
-        Dictionary with parsed command information
-    """
-    result = {
-        "is_mash": False,
-        "original_prompt": prompt,
-        "features": {},
-        "sources": {},
-    }
-    
-    # Check if it's a mash command
-    if not prompt.lower().startswith("mash "):
-        return result
-    
-    # Mark as mash command
-    result["is_mash"] = True
-    
-    # Extract the mash instruction part (everything after "mash ")
-    mash_instruction = prompt[5:].strip()
-    
-    # Extract feature filters and their sources
-    current_feature = None
-    
-    for part in mash_instruction.split():
-        if "from:" in part:
-            # This is a source reference (e.g., "from:1")
-            source_index_match = re.search(r'from:(\d+)', part)
-            if source_index_match and current_feature:
-                try:
-                    source_index = int(source_index_match.group(1))
-                    result["sources"][current_feature] = source_index
-                except ValueError:
-                    pass
-        else:
-            # This is a feature (e.g., "style", "background", etc.)
-            current_feature = part.lower()
-            result["features"][current_feature] = True
-    
-    return result
-
 def get_image_by_index(index: int) -> Optional[Dict]:
     """
     Get an image from the cache by its index (1-based)
@@ -255,18 +206,100 @@ def find_best_matching_image(prompt: str) -> Optional[Dict]:
         context = f"Description: {description}\nTags: {', '.join(tags)}"
         
         try:
-            # Ask Gemini to score the match between the prompt and the image
+            # Improved prompt for more consistent scoring
             response = matching_model.generate_content(
                 [{"text": f"""
-                Task: Rate how well an image matches a user prompt.
+                Task: Score how relevant an image is to a specific prompt.
                 
-                Image context:
+                Image information:
                 {context}
                 
                 User prompt: 
                 {prompt}
                 
-                On a scale of 0 to 10, how relevant is this image to the user's prompt?
+                Using only the information provided about the image (without seeing it), assign a relevance score 
+                from 0 to 10, where 0 means completely irrelevant and 10 means perfect match.
+                
+                Return only a number between 0 and 10.
+                """}]
+            )
+            
+            # Extract the score
+            score_text = response.text.strip()
+            # Handle possible text format - extract just the number
+            score_text = ''.join(char for char in score_text if char.isdigit() or char == '.')
+            
+            try:
+                score = float(score_text)
+                print(f"[📊] Image {instance_id[:6]} score: {score}")
+                
+                if score > highest_score:
+                    highest_score = score
+                    best_match = record
+            except ValueError:
+                print(f"[⚠️] Could not parse score: {score_text}")
+                continue
+                
+        except Exception as e:
+            print(f"[❌] Error scoring match for {instance_id[:6]}: {e}")
+            continue
+    
+    if best_match:
+        print(f"[✅] Best match found: {best_match['instanceId'][:6]} with score {highest_score}")
+    else:
+        print("[❌] No suitable match found")
+        
+    return best_match
+
+def find_second_best_matching_image(prompt: str, exclude_id: str) -> Optional[Dict]:
+    """
+    Find the second best matching image for a prompt, excluding the specified ID
+    
+    Args:
+        prompt: User's prompt
+        exclude_id: Instance ID to exclude
+        
+    Returns:
+        The second best matching image, or None if no matches
+    """
+    print(f"[🔍] Finding second best match for prompt: {prompt}, excluding {exclude_id[:6]}")
+    
+    with cache_lock:
+        if not description_cache:
+            print("[⚠️] No cached images available")
+            return None
+        
+        cached_descriptions_copy = {k: v for k, v in description_cache.items() if k != exclude_id}
+    
+    # Use text processing model
+    matching_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
+    
+    best_match = None
+    highest_score = -1
+    
+    for instance_id, record in cached_descriptions_copy.items():
+        # Extract description and tags
+        description = record.get("description", "")
+        tags = record.get("tags", [])
+        
+        # Create a context for matching
+        context = f"Description: {description}\nTags: {', '.join(tags)}"
+        
+        try:
+            # Improved prompt for more consistent scoring
+            response = matching_model.generate_content(
+                [{"text": f"""
+                Task: Score how relevant an image is to a specific prompt.
+                
+                Image information:
+                {context}
+                
+                User prompt: 
+                {prompt}
+                
+                Using only the information provided about the image (without seeing it), assign a relevance score 
+                from 0 to 10, where 0 means completely irrelevant and 10 means perfect match.
+                
                 Return only a number between 0 and 10.
                 """}]
             )
@@ -292,11 +325,297 @@ def find_best_matching_image(prompt: str) -> Optional[Dict]:
             continue
     
     if best_match:
-        print(f"[✅] Best match found: {best_match['instanceId'][:6]} with score {highest_score}")
+        print(f"[✅] Second best match found: {best_match['instanceId'][:6]} with score {highest_score}")
     else:
-        print("[❌] No suitable match found")
+        print("[❌] No suitable second match found")
         
     return best_match
+
+def parse_user_command(command: str) -> dict:
+    """
+    Parse user command to identify command type and parameters
+    
+    Args:
+        command: User's input command
+        
+    Returns:
+        Dictionary with command information
+    """
+    result = {
+        "command_type": "unknown",
+        "original_command": command,
+        "parameters": "",
+        "mash_info": None
+    }
+    
+    # Check for empty command
+    if not command or not command.strip():
+        return result
+    
+    command = command.strip()
+    
+    # Parse mash command - checking for "mash:" exactly
+    if command.lower() == "mash:" or command.lower().startswith("mash:"):
+        result["command_type"] = "mash"
+        result["parameters"] = command[5:].strip()
+        
+        # Parse mash details if provided
+        result["mash_info"] = parse_mash_details(result["parameters"])
+    
+    # If no known prefix, treat as a general prompt
+    else:
+        result["command_type"] = "prompt"
+        result["parameters"] = command
+    
+    print(f"[🔍] Parsed command: {result['command_type']} with parameters: {result['parameters']}")
+    return result
+
+def parse_mash_details(prompt: str) -> Dict:
+    """
+    Parse a mash command parameters to extract feature filters and source references
+    
+    Args:
+        prompt: User's mash parameters (e.g., "style from:1 content from:2")
+        
+    Returns:
+        Dictionary with parsed command information
+    """
+    result = {
+        "features": {},
+        "sources": {},
+        "is_empty": prompt.strip() == ""
+    }
+    
+    print(f"[🔍] Checking if mash command is empty: '{prompt}' -> {result['is_empty']}")
+    
+    # If empty prompt, this is a "mash all" command
+    if result["is_empty"]:
+        return result
+    
+    # Extract feature filters and their sources
+    current_feature = None
+    
+    for part in prompt.split():
+        if "from:" in part:
+            # This is a source reference (e.g., "from:1")
+            source_index_match = re.search(r'from:(\d+)', part)
+            if source_index_match and current_feature:
+                try:
+                    source_index = int(source_index_match.group(1))
+                    result["sources"][current_feature] = source_index
+                except ValueError:
+                    pass
+        else:
+            # This is a feature (e.g., "style", "background", etc.)
+            current_feature = part.lower()
+            result["features"][current_feature] = True
+    
+    return result
+
+def handle_mash_command(parsed_command: Dict) -> Dict:
+    """
+    Handle mash command by combining images according to specifications
+    
+    Args:
+        parsed_command: Parsed command information
+        
+    Returns:
+        Result of the operation
+    """
+    print(f"[🔀] Processing mash command: {parsed_command}")
+    
+    # Check if this is an empty mash command (mash:)
+    mash_info = parsed_command.get("mash_info", {})
+    parameters = parsed_command.get("parameters", "")
+    
+    # Debug output to check the values
+    print(f"[🔍] Mash parameters: '{parameters}'")
+    print(f"[🔍] Is empty mash command: {mash_info.get('is_empty', False)}")
+    
+    # If this is an empty mash command (mash:), combine all images in pairs
+    if mash_info and mash_info.get("is_empty", False):
+        print(f"[✅] Detected empty mash command, routing to handle_mash_all_images()")
+        return handle_mash_all_images()
+    
+    # Collect all source images for specified features
+    source_images = {}
+    
+    # Check if we have valid sources
+    if not mash_info or not mash_info.get("sources"):
+        # If no explicit sources, find best matching images for each feature
+        return find_and_mash_best_matches(parameters)
+    
+    # Get source images for each feature
+    for feature, source_index in mash_info.get("sources", {}).items():
+        source_image = get_image_by_index(source_index)
+        if source_image:
+            source_images[feature] = source_image
+            print(f"[🔍] Found source for {feature}: image #{source_index} ({source_image['instanceId'][:6]})")
+        else:
+            print(f"[⚠️] Source not found for {feature}: image #{source_index}")
+    
+    # Check if we have enough sources
+    if not source_images:
+        return {"error": "No valid source images found"}
+    
+    if len(source_images) < len(mash_info.get("sources", {})):
+        return {"error": "One or more source images not found"}
+    
+    # Determine the base image (either specified as "base" or the first source)
+    base_feature = next((f for f in mash_info.get("sources", {}).keys() if f == "base"), None)
+    if not base_feature:
+        # If no explicit base, use the first source
+        base_feature = next(iter(mash_info.get("sources", {}).keys()))
+    
+    base_image = source_images[base_feature]
+    
+    # Apply the mash operation
+    result = apply_operation_to_image(base_image, parsed_command["original_command"], source_images)
+    
+    return result
+
+
+def handle_mash_all_images() -> Dict:
+    """
+    Handle 'mash:' command (without parameters) by combining all images in pairs.
+    Generates n*n-n combinations (excluding self-combinations).
+    
+    Returns:
+        Result with all generated combinations
+    """
+    print("[🔄] Processing mash all images command")
+    
+    with cache_lock:
+        all_images = list(description_cache.values())
+        
+    if len(all_images) < 2:
+        return {"error": "Need at least 2 images to perform mash all operation"}
+    
+    total_images = len(all_images)
+    # n*n-n combinations (excluding self with self)
+    max_combinations = total_images * total_images - total_images
+    
+    print(f"[🔀] Starting mash of all {total_images} images ({max_combinations} combinations)")
+    
+    # Prepare array to store all combinations
+    all_combinations = []
+    
+    # Generate combinations by applying each image's style to every other image
+    for i, style_image in enumerate(all_images):
+        for j, content_image in enumerate(all_images):
+            # Skip self-combinations
+            if i == j:
+                continue
+                
+            # Create ID for this combination
+            combo_id = f"style{i+1}_content{j+1}"
+            print(f"[🔀] Processing combination {combo_id}")
+            
+            # Set up the source images for this combination
+            source_images = {
+                "style": style_image,
+                "content": content_image
+            }
+            
+            # Create a descriptive prompt
+            style_desc = style_image.get("description", f"image {i+1}")
+            content_desc = content_image.get("description", f"image {j+1}")
+            mash_prompt = f"Apply style from image {i+1} to content of image {j+1}"
+            
+            try:
+                # Apply the mash operation
+                result = apply_operation_to_image(
+                    content_image,  # Use content as base
+                    mash_prompt,
+                    source_images
+                )
+                
+                # Add metadata for tracking
+                result["styleImageIndex"] = i + 1
+                result["contentImageIndex"] = j + 1
+                result["styleImageId"] = style_image["instanceId"]
+                result["contentImageId"] = content_image["instanceId"]
+                result["combinationId"] = combo_id
+                
+                # Add to results
+                all_combinations.append(result)
+                
+                print(f"[✅] Completed combination {len(all_combinations)}/{max_combinations}")
+                
+            except Exception as e:
+                print(f"[❌] Error processing combination {i+1}×{j+1}: {e}")
+                error_result = {
+                    "styleImageIndex": i + 1,
+                    "contentImageIndex": j + 1,
+                    "error": f"Failed to process: {str(e)}"
+                }
+                all_combinations.append(error_result)
+    
+    # Final logging
+    print(f"[🎉] Successfully generated {len(all_combinations)} image combinations")
+    
+    # Return the results
+    return {
+        "command": "mash:",
+        "total_images": total_images,
+        "expected_combinations": max_combinations,
+        "actual_combinations": len(all_combinations),
+        "combinations": all_combinations
+    }
+
+def find_and_mash_best_matches(prompt: str) -> Dict:
+    """
+    Find two best matching images for the given prompt and mash them together
+    
+    Args:
+        prompt: User's prompt
+        
+    Returns:
+        Result of the mash operation
+    """
+    print(f"[🔍] Finding best matches for mash prompt: {prompt}")
+    
+    # Find the best matching image for style
+    style_match = find_best_matching_image("style " + prompt)
+    
+    # Find the best matching image for content
+    content_match = find_best_matching_image("content " + prompt)
+    
+    if not style_match or not content_match:
+        return {"error": "Could not find suitable images to match the prompt"}
+    
+    if style_match["instanceId"] == content_match["instanceId"]:
+        # Try to find a different content match
+        second_match = find_second_best_matching_image("content " + prompt, exclude_id=style_match["instanceId"])
+        if second_match:
+            content_match = second_match
+    
+    # Set up the source images
+    source_images = {
+        "style": style_match,
+        "content": content_match
+    }
+    
+    # Create enhanced mash prompt
+    style_desc = style_match.get("description", "unknown style")
+    content_desc = content_match.get("description", "unknown content")
+    mash_prompt = f"Apply the style of '{style_desc}' to the content of '{content_desc}'"
+    
+    # Apply the mash operation
+    result = apply_operation_to_image(
+        content_match,  # Use content as base
+        mash_prompt,
+        source_images
+    )
+    
+    # Add metadata about the matches
+    result["styleImageId"] = style_match["instanceId"]
+    result["contentImageId"] = content_match["instanceId"]
+    result["styleImageDescription"] = style_desc
+    result["contentImageDescription"] = content_desc
+    
+    return result
+
 
 def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dict = None) -> Dict:
     """
@@ -324,35 +643,13 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
         metadata = image_record.get("metadata", {})
         mime_type = mimetypes.guess_type(metadata.get("filename", "") or "")[0] or "image/png"
         
-        # Create a more specific prompt for Gemini based on the operation
+        # Use the provided prompt directly - don't modify it
         enhanced_prompt = prompt
         
-        # If this is a mash operation with source images
-        if source_images:
-            enhanced_prompt = "Create a new image that combines: "
-            
-            # Add details for each source image and its feature
-            for feature, source_image in source_images.items():
-                source_desc = source_image.get("description", "")
-                if feature == "style":
-                    enhanced_prompt += f"the visual style from '{source_desc}', "
-                elif feature == "content":
-                    enhanced_prompt += f"the content and subjects from '{source_desc}', "
-                elif feature == "background":
-                    enhanced_prompt += f"the background elements from '{source_desc}', "
-                elif feature == "foreground":
-                    enhanced_prompt += f"the foreground elements from '{source_desc}', "
-                elif feature == "composition":
-                    enhanced_prompt += f"the composition from '{source_desc}', "
-                elif feature == "lighting":
-                    enhanced_prompt += f"the lighting qualities from '{source_desc}', "
-                else:
-                    enhanced_prompt += f"the {feature} from '{source_desc}', "
-            
-            # Remove trailing comma and space
-            enhanced_prompt = enhanced_prompt.rstrip(", ")
+        # Skip the "Create a new image that combines" prefix for mash commands
+        # Just use the original prompt
         
-        print(f"[✏️] Enhanced prompt: {enhanced_prompt}")
+        print(f"[✏️] Using prompt: {enhanced_prompt}")
         
         # Use image generation model
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_IMAGE_MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
@@ -431,7 +728,7 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
         result = {
             "originalInstanceId": image_record["instanceId"],
             "prompt": prompt,
-            "enhancedPrompt": enhanced_prompt,
+            "originalPrompt": prompt,
             "result": {}
         }
         
@@ -473,38 +770,6 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
                                 # Add the local filename to the result
                                 result["localFilename"] = filename
                                 
-                                # Create a simple HTML file to view the image
-                                html_filename = f"view_{original_id}_{safe_prompt}.html"
-                                with open(html_filename, "w") as f:
-                                    f.write(f"""
-                                    <!DOCTYPE html>
-                                    <html>
-                                    <head>
-                                        <title>Generated Image</title>
-                                        <style>
-                                            body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
-                                            h1 {{ color: #333; }}
-                                            .image-container {{ margin: 20px 0; }}
-                                            img {{ max-width: 100%; border: 1px solid #ddd; }}
-                                            .details {{ background: #f9f9f9; padding: 15px; border-radius: 5px; }}
-                                        </style>
-                                    </head>
-                                    <body>
-                                        <h1>Generated Image</h1>
-                                        <div class="details">
-                                            <p><strong>Prompt:</strong> {prompt}</p>
-                                            <p><strong>Enhanced Prompt:</strong> {enhanced_prompt}</p>
-                                        </div>
-                                        <div class="image-container">
-                                            <h2>Generated Image</h2>
-                                            <img src="{filename}" alt="Generated image">
-                                        </div>
-                                    </body>
-                                    </html>
-                                    """)
-                                print(f"[🌐] Created HTML viewer: {html_filename}")
-                                result["htmlViewer"] = html_filename
-                                
                             except Exception as e:
                                 print(f"[❌] Error saving image: {e}")
                         
@@ -532,7 +797,7 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
 
 def handle_user_prompt(prompt: str):
     """
-    Handle user prompt by finding the best matching image and applying the operation
+    Handle user prompt by parsing the command type and routing to appropriate handler
     
     Args:
         prompt: User's prompt
@@ -542,63 +807,23 @@ def handle_user_prompt(prompt: str):
     """
     print(f"[🟡] Handling user prompt: {prompt}")
     
-    # Parse mash command if present
-    parsed_command = parse_mash_command(prompt)
+    # Parse the user command
+    parsed_command = parse_user_command(prompt)
     
-    # If this is a mash command
-    if parsed_command["is_mash"]:
-        print(f"[🔀] Processing mash command: {parsed_command}")
+    # Route to the appropriate handler based on command type
+    if parsed_command["command_type"] == "mash":
+        return handle_mash_command(parsed_command)
+    
+    # For standard prompts or unknown commands
+    else:
+        # Find the best matching image
+        best_match = find_best_matching_image(parsed_command["parameters"])
         
-        # Collect all source images
-        source_images = {}
+        if not best_match:
+            return {"error": "No suitable image found for the prompt"}
         
-        # Check if we have valid sources
-        if not parsed_command["sources"]:
-            return {"error": "Invalid mash command. Please specify sources with 'from:X' syntax"}
-        
-        # Get source images for each feature
-        for feature, source_index in parsed_command["sources"].items():
-            source_image = get_image_by_index(source_index)
-            if source_image:
-                source_images[feature] = source_image
-                print(f"[🔍] Found source for {feature}: image #{source_index} ({source_image['instanceId'][:6]})")
-            else:
-                print(f"[⚠️] Source not found for {feature}: image #{source_index}")
-        
-        # Check if we have enough sources
-        if len(source_images) < len(parsed_command["sources"]):
-            return {"error": "One or more source images not found"}
-        
-        # Determine the base image (either specified as "base" or the first source)
-        base_feature = next((f for f in parsed_command["sources"].keys() if f == "base"), None)
-        if not base_feature:
-            # If no explicit base, use the first source
-            base_feature = next(iter(parsed_command["sources"].keys()))
-        
-        base_image = source_images[base_feature]
-        
-        # Apply the mash operation
-        result = apply_operation_to_image(base_image, parsed_command["original_prompt"], source_images)
+        # Apply operation to image
+        result = apply_operation_to_image(best_match, parsed_command["parameters"])
         
         return result
-    
-    # For standard prompts
-    best_match = find_best_matching_image(prompt)
-    
-    if not best_match:
-        return {"error": "No suitable image found for the prompt"}
-    
-    # Apply operation to image
-    result = apply_operation_to_image(best_match, prompt)
-    
-    return result
 
-# Example usage:
-if __name__ == "__main__":
-    # Example 1: Process a simple prompt
-    result = handle_user_prompt("a futuristic cityscape at night")
-    print(json.dumps(result, indent=2))
-    
-    # Example 2: Process a mash command (after loading some images)
-    # result = handle_user_prompt("mash style from:1 content from:2")
-    # print(json.dumps(result, indent=2))
