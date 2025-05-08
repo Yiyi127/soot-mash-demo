@@ -391,8 +391,13 @@ def parse_user_command(command: str) -> dict:
     
     command = command.strip()
     
+    # Parse description command
+    if command.lower() == "describe:" or command.lower().startswith("describe:"):
+        result["command_type"] = "describe"
+        result["parameters"] = command[8:].strip()
+    
     # Parse tag command
-    if command.lower() == "tag:" or command.lower().startswith("tag:"):
+    elif command.lower() == "tag:" or command.lower().startswith("tag:"):
         result["command_type"] = "tag"
         result["parameters"] = command[4:].strip()
         
@@ -681,6 +686,10 @@ def handle_user_prompt(prompt: str):
     # Handle tag commands
     elif parsed_command["command_type"] == "tag":
         return handle_tag_command(parsed_command)
+    
+    # Handle description commands
+    elif parsed_command["command_type"] == "describe":
+        return handle_description_command(parsed_command)
     
     # For standard prompts or unknown commands
     else:
@@ -1079,6 +1088,105 @@ def handle_tag_command(parsed_command: Dict) -> Dict:
     # Return the results
     return {
         "command": f"tag:{parameters}",
+        "total_images": total_images,
+        "updated_images": len(updated_images),
+        "images": updated_images
+    }
+
+
+def handle_description_command(parsed_command: Dict) -> Dict:
+    """
+    Handle describe command by generating specialized descriptions for all images based on the user's prompt.
+    This creates a separate set of user descriptions while preserving the original system descriptions.
+    
+    Args:
+        parsed_command: Parsed command information
+        
+    Returns:
+        Result of the operation with updated images
+    """
+    print(f"[📝] Processing description command: {parsed_command}")
+    
+    parameters = parsed_command.get("parameters", "").strip()
+    
+    # Get all images from current session
+    with cache_lock:
+        all_images = list(current_session_cache.values())
+        
+    if not all_images:
+        return {"error": "No images available in current session"}
+    
+    total_images = len(all_images)
+    print(f"[📝] Generating user descriptions for {total_images} images with prompt: '{parameters}'")
+    
+    # Prepare array to store all updated images
+    updated_images = []
+    
+    for i, image in enumerate(all_images):
+        try:
+            # Get image data
+            image_base64 = image.get("imageBase64", "")
+            if not image_base64:
+                print(f"[⚠️] No image data available for image {i+1}")
+                continue
+            
+            # Keep system description
+            system_description = image.get("description", "")
+            
+            # Decode image for processing
+            image_bytes = base64.b64decode(image_base64)
+            metadata = image.get("metadata", {})
+            mime_type = mimetypes.guess_type(metadata.get("filename", "") or "")[0] or "image/png"
+            
+            # Determine which prompt to use based on parameters
+            if parameters:
+                # Custom prompt focused on user's specific parameter
+                prompt_text = f"Describe this image in 2-3 sentences, focusing ONLY on aspects related to '{parameters}'. Specifically describe how '{parameters}' is represented, experienced, or evident in this image. Ignore other aspects of the image unless they directly relate to '{parameters}'."
+            else:
+                # General description prompt (similar to our default one)
+                prompt_text = "Describe this image in detail (2-3 sentences), focusing on both content and style. Mention: 1) The main subjects/people, 2) The photographic or artistic style (e.g., portrait, landscape, abstract, vintage, minimalist), 3) Any notable visual characteristics (e.g., black and white, vibrant colors, blurry, sharp focus). Be specific about what's visible in the image."
+            
+            # Generate description using the appropriate prompt
+            response = model.generate_content([
+                {"mime_type": mime_type, "data": image_bytes},
+                {"text": prompt_text}
+            ])
+            
+            user_description = response.text.strip()
+            print(f"[📝] User description generated for image {i+1}: {user_description}")
+            
+            # Update the image record with both descriptions
+            updated_image = image.copy()
+            updated_image["system_description"] = system_description  # Original system-generated description
+            updated_image["user_description"] = user_description      # New user-command generated description
+            
+            # For backward compatibility, keep the original description field unchanged
+            # This ensures existing code that uses description still works
+            updated_image["description"] = system_description
+            
+            # Update the cache
+            with cache_lock:
+                instance_id = image.get("instanceId")
+                if instance_id:
+                    current_session_cache[instance_id] = updated_image
+                    description_cache[instance_id] = updated_image
+            
+            # Add to results - include both descriptions
+            updated_images.append({
+                "instanceId": instance_id,
+                "system_description": system_description,
+                "user_description": user_description,
+                "tags": image.get("tags", [])
+            })
+            
+            print(f"[✅] Added user description for image {i+1}/{total_images}")
+            
+        except Exception as e:
+            print(f"[❌] Error updating description for image {i+1}: {e}")
+    
+    # Return the results
+    return {
+        "command": f"describe:{parameters}",
         "total_images": total_images,
         "updated_images": len(updated_images),
         "images": updated_images
