@@ -156,18 +156,7 @@
       transition: opacity 0.8s ease;
       pointer-events: none;
       box-shadow: 0 0 20px rgba(250, 255, 0, 0.2);
-      overflow-y: auto;
-      overflow-x: hidden;
-    }
-    
-    /* Hide scrollbar for all browsers */
-    #terminal::-webkit-scrollbar {
-      display: none;
-    }
-    
-    #terminal {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
+      overflow: hidden; /* Changed from overflow-y: auto to prevent full terminal scrolling */
     }
 
     #terminalHeader {
@@ -176,6 +165,7 @@
       margin-bottom: 8px;
       border-bottom: 1px solid #333;
       padding-bottom: 8px;
+      flex-shrink: 0; /* Prevent header from shrinking */
     }
     
     #terminalOutput {
@@ -183,8 +173,25 @@
       display: flex;
       flex-direction: column;
       gap: 4px;
+      overflow-y: auto; /* Make only this section scrollable */
       margin-bottom: 12px;
-      min-height: 200px;
+      padding-right: 5px; /* Add padding for scrollbar */
+      scrollbar-width: thin;
+      scrollbar-color: #faff00 #111;
+    }
+    
+    /* Styling for scrollbar in Chrome, Safari and Opera */
+    #terminalOutput::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    #terminalOutput::-webkit-scrollbar-track {
+      background: #111;
+    }
+
+    #terminalOutput::-webkit-scrollbar-thumb {
+      background-color: #faff00;
+      border-radius: 6px;
     }
     
     .terminalLine {
@@ -199,10 +206,18 @@
     
     .terminalLineContent {
       flex: 1;
+      word-break: break-word; /* Prevent long text from breaking layout */
     }
     
     .terminalCommand {
       color: #faff00;
+    }
+
+    /* CLI input container */
+    #cliLineContainer {
+      flex-shrink: 0; /* Prevent input area from shrinking */
+      margin-top: auto; /* Push to bottom */
+      margin-bottom: 60px; /* Space for command buttons */
     }
 
     #cliLine {
@@ -210,7 +225,6 @@
       align-items: center;
       position: relative;
       padding: 4px 0;
-      margin: 30px 0 100px 0; /* Add margin to prevent buttons from covering input */
     }
 
     #cliLine .prompt {
@@ -353,8 +367,10 @@
           <span class="terminalLineContent">Ready for commands. Use buttons below or type directly.</span>
         </div>
       </div>
-      <div id="cliLine">
-        <input id="cliInput" type="text" placeholder="type command..." />
+      <div id="cliLineContainer">
+        <div id="cliLine">
+          <input id="cliInput" type="text" placeholder="type command..." />
+        </div>
       </div>
       
       <div id="commandButtons">
@@ -476,7 +492,6 @@
       }, 100);
     }
     
-    // Remove the startImageScrolling function since we're not using it anymore
     function addTerminalOutput(prefix, content, isCommand = false) {
       const terminalOutput = document.getElementById('terminalOutput');
       const line = document.createElement('div');
@@ -583,6 +598,13 @@
         }
       }
     });
+
+    // Add function to test with multiple lines (for development)
+    window.testMultipleLines = (count = 20) => {
+      for (let i = 0; i < count; i++) {
+        addTerminalOutput('test', `This is test line ${i+1} to check scrolling behavior`);
+      }
+    };
   </script>
 </body>
 </html>
