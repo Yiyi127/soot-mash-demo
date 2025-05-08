@@ -125,7 +125,7 @@ def generate_description(image_base64: str, meta: Metadata) -> tuple[str, str]:
 
         response = model.generate_content([
             {"mime_type": mime_type, "data": image_bytes},
-            {"text": "Describe this image in one short, clear sentence that captures the main subject and scene."}
+            {"text": "Describe this image in detail (2-3 sentences), focusing on both content and style. Mention: 1) The main subjects/people, 2) The photographic or artistic style (e.g., portrait, landscape, abstract, vintage, minimalist), 3) Any notable visual characteristics (e.g., black and white, vibrant colors, blurry, sharp focus). Be specific about what's visible in the image."}
         ])
 
         description = response.text.strip()
@@ -144,7 +144,7 @@ def generate_tags(image_base64: str, meta: Metadata) -> List[str]:
 
         response = model.generate_content([
             {"mime_type": mime_type, "data": image_bytes},
-            {"text": "List 5 to 8 concise, lowercase tags that best describe the image content. Include tags for style, background, foreground, composition, and lighting. Return only a JSON array."}
+            {"text": "Generate 8-12 detailed, lowercase tags that thoroughly describe this image. Include tags for: 1) Visual style (e.g., portrait, landscape, abstract), 2) Technical aspects (saturation level, contrast level, black and white if applicable), 3) Subject matter and content, 4) Mood or emotion, 5) Composition, 6) Lighting conditions, 7) Color palette. Return only a JSON array of string tags."}
         ])
 
         tags_text = response.text.strip()
