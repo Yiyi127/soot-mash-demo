@@ -9,6 +9,17 @@ from typing import List, Dict, Tuple, Optional, Union
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import google.generativeai as genai
+import time
+import uuid
+import os
+
+# Add global cache persistence config
+CACHE_EXPIRY_SECONDS = 3600  # Cache lifetime (1 hour)
+cache_last_access = {}  # Record last access time for each instanceId
+
+# Session management variables
+current_session_id = str(uuid.uuid4())  # Generate initial session ID
+current_session_cache = {}  # The current session's cache
 
 load_dotenv()
 
@@ -33,8 +44,21 @@ class Metadata(BaseModel):
     operation: int
 
 def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
+    global current_session_id, current_session_cache, description_cache
     frontend_payloads = []
 
+    # If new images are received, create a new session
+    if metadata_list:
+        with cache_lock:
+            # Create new session ID
+            new_session_id = str(uuid.uuid4())
+            print(f"[🔄] Creating new session: {new_session_id}")
+            
+            # Update current session
+            current_session_id = new_session_id
+            current_session_cache = {}  # Clear current session cache
+            # We don't clear description_cache to keep persistence capability
+    
     for meta in metadata_list:
         try:
             print(f"[📥] Fetching image for: {meta.filename or meta.instanceId[:6]}")
@@ -65,6 +89,8 @@ def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
     return frontend_payloads
 
 def _generate_and_cache_description(meta: Metadata, image_base64: str):
+    global current_session_cache
+    
     try:
         print(f"[⏳] Starting description generation for {meta.instanceId[:6]}")
         description, raw_response = generate_description(image_base64, meta)
@@ -80,7 +106,12 @@ def _generate_and_cache_description(meta: Metadata, image_base64: str):
         }
 
         with cache_lock:
+            # Add to current session cache
+            current_session_cache[meta.instanceId] = record
+            
+            # Also add to global cache for persistence
             description_cache[meta.instanceId] = record
+            
         print(f"[✅] Cached description for {meta.instanceId[:6]}")
 
     except Exception as e:
@@ -149,14 +180,14 @@ def generate_tags(image_base64: str, meta: Metadata) -> List[str]:
 def get_all_cached_descriptions() -> List[Dict]:
     with cache_lock:
         cleaned = []
-        for record in description_cache.values():
+        for record in current_session_cache.values():
             filtered = {k: v for k, v in record.items() if k != "imageBase64"}
             cleaned.append(filtered)
         return cleaned
 
 def get_image_by_index(index: int) -> Optional[Dict]:
     """
-    Get an image from the cache by its index (1-based)
+    Get an image from the current session cache by its index (1-based)
     
     Args:
         index: 1-based index of the image in the cache
@@ -165,11 +196,16 @@ def get_image_by_index(index: int) -> Optional[Dict]:
         The image record or None if not found
     """
     with cache_lock:
-        all_images = list(description_cache.values())
+        all_images = list(current_session_cache.values())  # Use current_session_cache
         # Convert 1-based index to 0-based index
         idx = index - 1
         if 0 <= idx < len(all_images):
-            return all_images[idx]
+            image = all_images[idx]
+            # Update last access time
+            instance_id = image.get("instanceId")
+            if instance_id:
+                cache_last_access[instance_id] = time.time()
+            return image
     return None
 
 def find_best_matching_image(prompt: str) -> Optional[Dict]:
@@ -185,11 +221,11 @@ def find_best_matching_image(prompt: str) -> Optional[Dict]:
     print(f"[🔍] Finding best match for prompt: {prompt}")
     
     with cache_lock:
-        if not description_cache:
+        if not current_session_cache:
             print("[⚠️] No cached images available")
             return None
         
-        cached_descriptions_copy = description_cache.copy()
+        cached_descriptions_copy = current_session_cache.copy()
     
     # Use text processing model
     matching_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
@@ -265,11 +301,11 @@ def find_second_best_matching_image(prompt: str, exclude_id: str) -> Optional[Di
     print(f"[🔍] Finding second best match for prompt: {prompt}, excluding {exclude_id[:6]}")
     
     with cache_lock:
-        if not description_cache:
-            print("[⚠️] No cached images available")
+        if not current_session_cache:
+            print("[⚠️] No cached images available in current session")
             return None
         
-        cached_descriptions_copy = {k: v for k, v in description_cache.items() if k != exclude_id}
+        cached_descriptions_copy = {k: v for k, v in current_session_cache.items() if k != exclude_id}
     
     # Use text processing model
     matching_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
@@ -474,11 +510,11 @@ def handle_mash_command(parsed_command: Dict) -> Dict:
     
     return result
 
-
 def handle_mash_all_images() -> Dict:
     """
     Handle 'mash:' command (without parameters) by combining all images in pairs.
     Generates n*n-n combinations (excluding self-combinations).
+    Uses only images from the current session.
     
     Returns:
         Result with all generated combinations
@@ -486,7 +522,8 @@ def handle_mash_all_images() -> Dict:
     print("[🔄] Processing mash all images command")
     
     with cache_lock:
-        all_images = list(description_cache.values())
+        # Changed from description_cache to current_session_cache
+        all_images = list(current_session_cache.values())
         
     if len(all_images) < 2:
         return {"error": "Need at least 2 images to perform mash all operation"}
@@ -616,7 +653,106 @@ def find_and_mash_best_matches(prompt: str) -> Dict:
     
     return result
 
+def handle_user_prompt(prompt: str):
+    """
+    Handle user prompt by parsing the command type and routing to appropriate handler
+    
+    Args:
+        prompt: User's prompt
+        
+    Returns:
+        Result of the operation
+    """
+    print(f"[🟡] Handling user prompt: {prompt}")
+    
+    # Parse the user command
+    parsed_command = parse_user_command(prompt)
+    
+    # Route to the appropriate handler based on command type
+    if parsed_command["command_type"] == "mash":
+        return handle_mash_command(parsed_command)
+    
+    # For standard prompts or unknown commands
+    else:
+        # Find the best matching image
+        best_match = find_best_matching_image(parsed_command["parameters"])
+        
+        if not best_match:
+            return {"error": "No suitable image found for the prompt"}
+        
+        # Apply operation to image
+        result = apply_operation_to_image(best_match, parsed_command["parameters"])
+        
+        return result
 
+def save_cache_to_disk():
+    """Save current cache to disk for persistence"""
+    try:
+        if not os.path.exists("cache"):
+            os.makedirs("cache")
+        
+        # Save current cache state (excluding imageBase64 to reduce file size)
+        cache_to_save = {}
+        with cache_lock:
+            for instance_id, record in description_cache.items():
+                # Create copy without imageBase64
+                record_copy = record.copy()
+                if "imageBase64" in record_copy:
+                    # Save image to separate file
+                    img_file = f"cache/{instance_id}.b64"
+                    with open(img_file, "w") as f:
+                        f.write(record_copy["imageBase64"])
+                    record_copy["imageBase64_file"] = img_file
+                    del record_copy["imageBase64"]
+                cache_to_save[instance_id] = record_copy
+        
+        # Save metadata
+        with open("cache/metadata.json", "w") as f:
+            json.dump(cache_to_save, f)
+            
+        print(f"[💾] Cache saved to disk: {len(cache_to_save)} entries")
+    except Exception as e:
+        print(f"[❌] Failed to save cache: {e}")
+
+def load_cache_from_disk():
+    """Load cache from disk for persistence"""
+    try:
+        if not os.path.exists("cache/metadata.json"):
+            print("[ℹ️] No cache file found, starting with empty cache")
+            return
+            
+        # Load metadata
+        with open("cache/metadata.json", "r") as f:
+            loaded_cache = json.load(f)
+            
+        # Load image data
+        with cache_lock:
+            for instance_id, record in loaded_cache.items():
+                if "imageBase64_file" in record:
+                    try:
+                        img_file = record["imageBase64_file"]
+                        if os.path.exists(img_file):
+                            with open(img_file, "r") as f:
+                                record["imageBase64"] = f.read()
+                        del record["imageBase64_file"]
+                    except Exception as e:
+                        print(f"[⚠️] Failed to load image for {instance_id}: {e}")
+                
+                description_cache[instance_id] = record
+                cache_last_access[instance_id] = time.time()
+                
+        print(f"[📂] Loaded {len(description_cache)} entries from cache")
+    except Exception as e:
+        print(f"[❌] Failed to load cache: {e}")
+
+# Add function to generate unique filenames
+def generate_unique_filename(prefix: str, extension: str = "png") -> str:
+    """Generate unique filename to avoid conflicts"""
+    timestamp = int(time.time())
+    unique_id = str(uuid.uuid4())[:8]
+    return f"{prefix}_{timestamp}_{unique_id}.{extension}"
+
+# Fix apply_operation_to_image function to use unique filenames
 def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dict = None) -> Dict:
     """
     Apply the user's prompt operation to the selected image
@@ -643,11 +779,8 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
         metadata = image_record.get("metadata", {})
         mime_type = mimetypes.guess_type(metadata.get("filename", "") or "")[0] or "image/png"
         
-        # Use the provided prompt directly - don't modify it
+        # Use the provided prompt directly
         enhanced_prompt = prompt
-        
-        # Skip the "Create a new image that combines" prefix for mash commands
-        # Just use the original prompt
         
         print(f"[✏️] Using prompt: {enhanced_prompt}")
         
@@ -720,8 +853,9 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
         # Parse response
         result_json = response.json()
         
-        # Save full response for debugging
-        with open(f"gemini_response_{image_record['instanceId'][:6]}.json", "w") as f:
+        # Save full response for debugging with unique name
+        debug_filename = generate_unique_filename(f"gemini_response_{image_record['instanceId'][:6]}", "json")
+        with open(debug_filename, "w") as f:
             json.dump(result_json, f, indent=2)
         
         # Result to return
@@ -753,16 +887,16 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
                             result["result"]["imageBase64"] = generated_image_base64
                             print("[✅] Generated new image successfully")
                             
-                            # Save the generated image to local file for viewing
+                            # Save the generated image to local file with unique name
                             try:
                                 image_data = base64.b64decode(generated_image_base64)
                                 
-                                # Generate a filename using the original image ID and the prompt
+                                # Generate unique filename
                                 original_id = image_record["instanceId"][:6]
                                 safe_prompt = "".join(c for c in prompt[:20] if c.isalnum() or c.isspace()).replace(" ", "_")
-                                filename = f"generated_{original_id}_{safe_prompt}.png"
+                                filename = generate_unique_filename(f"generated_{original_id}_{safe_prompt}")
                                 
-                                # Save the image
+                                # Save image
                                 with open(filename, "wb") as f:
                                     f.write(image_data)
                                 print(f"[💾] Saved generated image to {filename}")
@@ -795,35 +929,28 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
             "error": str(e)
         }
 
-def handle_user_prompt(prompt: str):
-    """
-    Handle user prompt by parsing the command type and routing to appropriate handler
+# Add initialization code to load cache at startup
+def initialize_system():
+    """Initialize the system, load cache, and set up background tasks"""
+    print("[🚀] Initializing system...")
     
-    Args:
-        prompt: User's prompt
-        
-    Returns:
-        Result of the operation
-    """
-    print(f"[🟡] Handling user prompt: {prompt}")
+    # Load existing cache from disk
+    load_cache_from_disk()
     
-    # Parse the user command
-    parsed_command = parse_user_command(prompt)
+    # Set up periodic cache saving
+    def periodic_cache_save():
+        while True:
+            time.sleep(300)  # Save every 5 minutes
+            save_cache_to_disk()
+            print("[⏲️] Performed periodic cache save")
     
-    # Route to the appropriate handler based on command type
-    if parsed_command["command_type"] == "mash":
-        return handle_mash_command(parsed_command)
+    # Start background thread for periodic tasks
+    background_thread = threading.Thread(target=periodic_cache_save, daemon=True)
+    background_thread.start()
     
-    # For standard prompts or unknown commands
-    else:
-        # Find the best matching image
-        best_match = find_best_matching_image(parsed_command["parameters"])
-        
-        if not best_match:
-            return {"error": "No suitable image found for the prompt"}
-        
-        # Apply operation to image
-        result = apply_operation_to_image(best_match, parsed_command["parameters"])
-        
-        return result
+    print("[✅] System initialized successfully")
 
+# Call initialization at module import time
+# Make sure this is at the end of the file
+if __name__ != "__main__":  # Only when imported, not when run directly
+    initialize_system()
