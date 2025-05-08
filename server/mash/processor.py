@@ -1151,10 +1151,10 @@ def handle_description_command(parsed_command: Dict) -> Dict:
             # Determine which prompt to use based on parameters
             if parameters:
                 # Custom prompt focused on user's specific parameter
-                prompt_text = f"Describe this image in 2-3 sentences, focusing ONLY on aspects related to '{parameters}'. Specifically describe how '{parameters}' is represented, experienced, or evident in this image. Ignore other aspects of the image unless they directly relate to '{parameters}'."
+                prompt_text = f"Describe this image in 2-3 sentences, focusing ONLY on aspects related to '{parameters}'. Specifically describe how '{parameters}' is represented, experienced, or evident in this image. Ignore other aspects of the image unless they directly relate to '{parameters}'. Describe this image in exceptional detail, focusing on the main subject, visual style, composition, colors, textures, lighting, mood, and artistic characteristics. Be comprehensive but maintain the essence of the image. Provide a description that could be used as a prompt to recreate this image."
             else:
                 # General description prompt (similar to our default one)
-                prompt_text = "Describe this image in detail (2-3 sentences), focusing on both content and style. Mention: 1) The main subjects/people, 2) The photographic or artistic style (e.g., portrait, landscape, abstract, vintage, minimalist), 3) Any notable visual characteristics (e.g., black and white, vibrant colors, blurry, sharp focus). Be specific about what's visible in the image."
+                prompt_text = "Describe this image in detail (2-3 sentences), focusing on both content and style. Mention: 1) The main subjects/people, 2) The photographic or artistic style (e.g., portrait, landscape, abstract, vintage, minimalist), 3) Any notable visual characteristics (e.g., black and white, vibrant colors, blurry, sharp focus). Be specific about what's visible in the image. Describe this image in exceptional detail, focusing on the main subject, visual style, composition, colors, textures, lighting, mood, and artistic characteristics. Be comprehensive but maintain the essence of the image. Provide a description that could be used as a prompt to recreate this image."
             
             # Generate description using the appropriate prompt
             response = model.generate_content([
