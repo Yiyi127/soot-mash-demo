@@ -12,6 +12,7 @@ import google.generativeai as genai
 import time
 import uuid
 import os
+from .upload_utils import upload_image_to_soot
 
 # Add global cache persistence config
 CACHE_EXPIRY_SECONDS = 3600  # Cache lifetime (1 hour)
@@ -530,6 +531,7 @@ def handle_mash_command(parsed_command: Dict) -> Dict:
     result = apply_operation_to_image(base_image, parsed_command["original_command"], source_images)
     
     return result
+  
 
 def handle_mash_all_images() -> Dict:
     """
@@ -599,6 +601,34 @@ def handle_mash_all_images() -> Dict:
                 all_combinations.append(result)
                 
                 print(f"[✅] Completed combination {len(all_combinations)}/{max_combinations}")
+                
+                # Upload to original SOOT space if we have a generated image
+                if "result" in result and "imageBase64" in result["result"]:
+                    try:
+                        # Get spaceId from metadata - use content image's space
+                        space_id = content_image.get("metadata", {}).get("spaceId")
+                        if space_id:
+                            print(f"[🔄] Uploading mash combination {combo_id} to SOOT space: {space_id}")
+                            
+                            # Upload to SOOT
+                            upload_result = upload_image_to_soot(
+                                image_data=result["result"]["imageBase64"],
+                                space_id=space_id,
+                                is_base64=True,
+                                verbose=True
+                            )
+                            
+                            # Store upload result
+                            result["sootUploadResult"] = upload_result
+                            
+                            if upload_result["success"]:
+                                print(f"[✅] Mash combination {combo_id} successfully uploaded to SOOT")
+                            else:
+                                print(f"[❌] Failed to upload mash combination {combo_id}: {upload_result['message']}")
+                    except Exception as e:
+                        print(f"[❌] Error uploading mash combination {combo_id}: {e}")
+                        import traceback
+                        traceback.print_exc()
                 
             except Exception as e:
                 print(f"[❌] Error processing combination {i+1}×{j+1}: {e}")
@@ -790,7 +820,6 @@ def generate_unique_filename(prefix: str, extension: str = "png") -> str:
     unique_id = str(uuid.uuid4())[:8]
     return f"{prefix}_{timestamp}_{unique_id}.{extension}"
 
-# Fix apply_operation_to_image function to use unique filenames
 def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dict = None) -> Dict:
     """
     Apply the user's prompt operation to the selected image
@@ -942,8 +971,31 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
                                 # Add the local filename to the result
                                 result["localFilename"] = filename
                                 
+                                # Upload to SOOT
+                                space_id = image_record.get("metadata", {}).get("spaceId")
+                                if space_id:
+                                    print(f"[🔄] Uploading generated image to SOOT space: {space_id}")
+                                    
+                                    # Upload the generated image
+                                    upload_result = upload_image_to_soot(
+                                        image_data=generated_image_base64,
+                                        space_id=space_id,
+                                        is_base64=True,
+                                        verbose=True
+                                    )
+                                    
+                                    # Store upload result
+                                    result["sootUploadResult"] = upload_result
+                                    
+                                    if upload_result["success"]:
+                                        print(f"[✅] Generated image successfully uploaded to SOOT")
+                                    else:
+                                        print(f"[❌] Failed to upload generated image: {upload_result['message']}")
+                                
                             except Exception as e:
-                                print(f"[❌] Error saving image: {e}")
+                                print(f"[❌] Error saving/uploading image: {e}")
+                                import traceback
+                                traceback.print_exc()
                         
                         # If there is text response
                         if 'text' in part:
@@ -966,6 +1018,8 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
             "prompt": prompt,
             "error": str(e)
         }
+    
+
 
 # Add initialization code to load cache at startup
 def initialize_system():
