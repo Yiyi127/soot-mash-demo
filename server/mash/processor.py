@@ -44,23 +44,19 @@ def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
             image_bytes = res.content
             image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-            # Save the image locally so you can see it
-            local_filename = f"original_{meta.instanceId[:6]}.png"
-            with open(local_filename, "wb") as f:
-                f.write(image_bytes)
-            print(f"[💾] Saved original image to {local_filename}")
-
+            # Removed local file saving for original images
+            
             frontend_payloads.append({
                 "metadata": meta.dict(),
-                "imageBase64": image_base64,
-                "localFilename": local_filename  # Add local filename to the payload
+                "imageBase64": image_base64
             })
 
             print(f"[📤] Payload ready for frontend: {meta.filename or meta.instanceId[:6]}")
 
+            # Start async processing
             threading.Thread(
                 target=_generate_and_cache_description,
-                args=(meta, image_base64, local_filename)
+                args=(meta, image_base64)
             ).start()
 
         except Exception as e:
@@ -70,7 +66,7 @@ def process_metadata_entries(metadata_list: List[Metadata]) -> List[Dict]:
     print(f"[✅] Total payloads returned: {len(frontend_payloads)}")
     return frontend_payloads
 
-def _generate_and_cache_description(meta: Metadata, image_base64: str, local_filename: str):
+def _generate_and_cache_description(meta: Metadata, image_base64: str):
     try:
         print(f"[⏳] Starting description generation for {meta.instanceId[:6]}")
         description, raw_response = generate_description(image_base64, meta)
@@ -82,8 +78,7 @@ def _generate_and_cache_description(meta: Metadata, image_base64: str, local_fil
             "imageBase64": image_base64,
             "description": description,
             "tags": tags,
-            "rawResponse": raw_response,
-            "localFilename": local_filename  # Store local filename in record
+            "rawResponse": raw_response
         }
 
         with cache_lock:
@@ -503,10 +498,6 @@ def apply_operation_to_image(image_record: Dict, prompt: str, source_images: Dic
                                         <div class="image-container">
                                             <h2>Generated Image</h2>
                                             <img src="{filename}" alt="Generated image">
-                                        </div>
-                                        <div class="image-container">
-                                            <h2>Original Image</h2>
-                                            <img src="{image_record.get('localFilename', '')}" alt="Original image">
                                         </div>
                                     </body>
                                     </html>
