@@ -1,4 +1,5 @@
 //scripts/clipboard.js
+import { getAuthToken } from './auth.js';
 
 const SOOT_MIME_KEYWORD = 'soot-json';
 const MASH_SERVER_URL = 'http://localhost:8000';
@@ -94,10 +95,15 @@ export async function processSootClipboard() {
 
   try {
     console.log('[SOOT] 🔁 Sending metadata to backend...');
+    
+    // Get auth token
+    const token = getAuthToken();
+    
     const res = await fetch(`${MASH_SERVER_URL}/api/mash/process-entries`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
       },
       body: JSON.stringify(payloads.map(p => p.metadata))
     });

@@ -1,4 +1,5 @@
 //scripts/prompt.js
+import { getAuthToken } from './auth.js';
 
 let MASH_SERVER_URL = null;
 
@@ -14,9 +15,15 @@ async function loadConfig() {
 export async function sendPromptToBackend(promptText) {
   const baseUrl = await loadConfig();
   try {
-    const res = await fetch(`${baseUrl}/user-prompt`, {
+    // Get auth token
+    const token = getAuthToken();
+    
+    const res = await fetch(`${baseUrl}/api/mash/user-prompt`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
       body: JSON.stringify({ prompt: promptText })
     });
 
@@ -24,7 +31,9 @@ export async function sendPromptToBackend(promptText) {
 
     const result = await res.json();
     console.log('[🟢] Server received:', result);
+    return result;
   } catch (err) {
     console.error('[🔴] Prompt send failed:', err);
+    throw err;
   }
 }

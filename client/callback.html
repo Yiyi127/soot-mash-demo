@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SOOT - Authenticating</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      background-color: #0c0c0c;
+      font-family: 'Share Tech Mono', monospace;
+      color: #fff;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      position: relative;
+      width: 100%;
+      max-width: 500px;
+      text-align: center;
+    }
+
+    #hudOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background-image: repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.02),
+        rgba(255, 255, 255, 0.02) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      z-index: -1;
+    }
+
+    .glow-effect {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: radial-gradient(
+        circle at center,
+        rgba(250, 255, 0, 0.1) 0%,
+        rgba(0, 0, 0, 0) 70%
+      );
+      z-index: -1;
+      top: 0;
+      left: 0;
+    }
+
+    #header {
+      font-size: 24px;
+      letter-spacing: 4px;
+      color: #faff00;
+      margin-bottom: 40px;
+    }
+
+    #message {
+      font-size: 16px;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .loading {
+      display: inline-block;
+      position: relative;
+      width: 80px;
+      height: 20px;
+      margin-bottom: 20px;
+    }
+
+    .loading div {
+      position: absolute;
+      top: 9px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #faff00;
+      animation-timing-function: cubic-bezier(0, 1, 1, 0);
+    }
+
+    .loading div:nth-child(1) {
+      left: 8px;
+      animation: loading1 0.6s infinite;
+    }
+
+    .loading div:nth-child(2) {
+      left: 8px;
+      animation: loading2 0.6s infinite;
+    }
+
+    .loading div:nth-child(3) {
+      left: 32px;
+      animation: loading2 0.6s infinite;
+    }
+
+    .loading div:nth-child(4) {
+      left: 56px;
+      animation: loading3 0.6s infinite;
+    }
+
+    @keyframes loading1 {
+      0% {
+        transform: scale(0);
+      }
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    @keyframes loading3 {
+      0% {
+        transform: scale(1);
+      }
+      100% {
+        transform: scale(0);
+      }
+    }
+
+    @keyframes loading2 {
+      0% {
+        transform: translate(0, 0);
+      }
+      100% {
+        transform: translate(24px, 0);
+      }
+    }
+
+    .error {
+      color: #ff5757;
+    }
+
+    #retry {
+      padding: 10px 20px;
+      font-size: 14px;
+      background-color: #faff00;
+      color: #000;
+      border: 1px solid #000;
+      border-radius: 2px;
+      box-shadow: 0 0 8px #faff00;
+      cursor: pointer;
+      font-family: 'Share Tech Mono', monospace;
+      margin-top: 20px;
+      display: none;
+    }
+
+    #retry:hover {
+      background-color: #fff200;
+    }
+  </style>
+</head>
+<body>
+  <div id="hudOverlay"></div>
+  <div class="glow-effect"></div>
+  
+  <div class="container">
+    <div id="header">AUTHENTICATING</div>
+    
+    <div class="loading">
+      <div></div><div></div><div></div><div></div>
+    </div>
+    
+    <div id="message">Processing Google authentication...</div>
+    
+    <button id="retry" onclick="window.location.href = 'login.html'">RETRY LOGIN</button>
+  </div>
+
+  <script>
+    // Configuration
+    const API_BASE_URL = 'http://localhost:8000'; // Update with your actual backend URL
+    
+    // DOM elements
+    const messageEl = document.getElementById('message');
+    const loadingEl = document.querySelector('.loading');
+    const retryBtn = document.getElementById('retry');
+    const headerEl = document.getElementById('header');
+    
+    // Helper function to parse URL parameters
+    function getUrlParameter(name) {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get(name);
+    }
+    
+    // Handle authentication error
+    function handleError(message) {
+      headerEl.textContent = 'AUTHENTICATION FAILED';
+      headerEl.style.color = '#ff5757';
+      messageEl.textContent = message;
+      messageEl.classList.add('error');
+      loadingEl.style.display = 'none';
+      retryBtn.style.display = 'inline-block';
+    }
+    
+    // Exchange code for token
+    async function exchangeCodeForToken(code) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ code })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to exchange authorization code for token');
+        }
+        
+        const data = await response.json();
+        
+        if (data.access_token) {
+          // Store token and expiry in localStorage
+          localStorage.setItem('soot_auth_token', data.access_token);
+          
+          // Calculate and store expiry time
+          const expiresInMs = data.expires_in * 1000;
+          const expiryTime = new Date().getTime() + expiresInMs;
+          localStorage.setItem('soot_token_expiry', expiryTime);
+          
+          // Store refresh token if provided
+          if (data.refresh_token) {
+            localStorage.setItem('soot_refresh_token', data.refresh_token);
+          }
+          
+          // Update UI
+          messageEl.textContent = 'Authentication successful! Redirecting...';
+          
+          // Redirect to main app
+          setTimeout(() => {
+            window.location.href = 'index.html';
+          }, 1500);
+        } else {
+          throw new Error('No access token received');
+        }
+      } catch (error) {
+        console.error('Authentication error:', error);
+        handleError(`Authentication failed: ${error.message}`);
+      }
+    }
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      // Get authorization code from URL
+      const code = getUrlParameter('code');
+      const error = getUrlParameter('error');
+      
+      if (error) {
+        // Handle error from Google
+        handleError(`Google authentication error: ${error}`);
+      } else if (code) {
+        // Exchange code for token
+        exchangeCodeForToken(code);
+      } else {
+        // No code or error in URL
+        handleError('No authorization code received');
+      }
+    });
+  </script>
+</body>
+</html>

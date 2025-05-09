@@ -377,9 +377,69 @@
       padding: 10px;
       font-family: 'Share Tech Mono', monospace;
     }
+
+
+    #userProfile {
+      position: absolute;
+      top: 16px;
+      right: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 10;
+    }
+    
+    #userAvatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1px solid #faff00;
+      box-shadow: 0 0 5px rgba(250, 255, 0, 0.5);
+    }
+    
+    #userName {
+      font-size: 14px;
+      color: #faff00;
+    }
+    
+    #logoutButton {
+      background: none;
+      border: none;
+      color: #faff00;
+      cursor: pointer;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      padding: 0;
+      margin: 0;
+    }
   </style>
 </head>
 <body>
+
+  <div class="container" id="mainContainer">
+    <div id="hudOverlay"></div>
+    <div class="glow-effect"></div>
+    <div id="header">SOOT / playground</div>
+    
+    <!-- Add user profile -->
+    <div id="userProfile">
+      <img id="userAvatar" src="" alt="User avatar">
+      <span id="userName"></span>
+      <button id="logoutButton" title="Logout">
+        <span class="material-symbols-outlined">logout</span>
+      </button>
+    </div>
+    
+    <button id="pasteButton">
+      <span class="material-symbols-outlined">content_paste</span>
+      PASTE
+      <span class="material-symbols-outlined">auto_awesome</span>
+    </button>
+    <div id="loadingTypewriter">loading ...</div>
+
+
+
   <div class="container" id="mainContainer">
     <div id="hudOverlay"></div>
     <div class="glow-effect"></div>
@@ -423,6 +483,28 @@
   <script type="module">
     import { processSootClipboard } from './scripts/clipboard.js';
     import { sendPromptToBackend } from './scripts/prompt.js';
+    import { requireAuth, logout, getAuthToken } from './scripts/auth.js';
+
+
+    // Check authentication first
+    if (!requireAuth()) {
+      // If not authenticated, script will stop here (redirected to login)
+      throw new Error('Authentication required');
+    }
+    
+    // Display user info if we have it
+    const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+    if (userInfo.name) {
+      document.getElementById('userName').textContent = userInfo.name;
+    }
+    if (userInfo.picture) {
+      document.getElementById('userAvatar').src = userInfo.picture;
+    }
+    
+    // Set up logout button
+    document.getElementById('logoutButton').addEventListener('click', logout);
+
+
 
     const button = document.getElementById('pasteButton');
     const container = document.getElementById('mainContainer');

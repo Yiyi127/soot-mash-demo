@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SOOT - Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <style>
+    body {
+      margin: 0;
+      background-color: #0c0c0c;
+      font-family: 'Share Tech Mono', monospace;
+      color: #fff;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      position: relative;
+      width: 100%;
+      max-width: 500px;
+      text-align: center;
+    }
+
+    #hudOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background-image: repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.02),
+        rgba(255, 255, 255, 0.02) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      z-index: -1;
+    }
+
+    .glow-effect {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: radial-gradient(
+        circle at center,
+        rgba(250, 255, 0, 0.1) 0%,
+        rgba(0, 0, 0, 0) 70%
+      );
+      z-index: -1;
+      top: 0;
+      left: 0;
+    }
+
+    #header {
+      font-size: 32px;
+      letter-spacing: 8px;
+      color: #faff00;
+      margin-bottom: 60px;
+      text-shadow: 0 0 10px rgba(250, 255, 0, 0.5);
+    }
+
+    #loginButton {
+      padding: 16px 32px;
+      font-size: 16px;
+      background-color: #faff00;
+      color: #000;
+      border: 1px solid #000;
+      border-radius: 2px;
+      box-shadow: 0 0 10px #faff00;
+      cursor: pointer;
+      font-family: 'Share Tech Mono', monospace;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 auto;
+      transition: all 0.2s ease;
+    }
+
+    #loginButton:hover {
+      background-color: #fff200;
+      transform: translateY(-2px);
+      box-shadow: 0 0 15px #faff00;
+    }
+
+    #loginButton img {
+      width: 20px;
+      height: 20px;
+    }
+
+    #statusMessage {
+      margin-top: 30px;
+      color: #faff00;
+      font-size: 14px;
+      height: 20px;
+      min-height: 20px;
+    }
+
+    .loading {
+      display: inline-block;
+      position: relative;
+      width: 80px;
+      height: 20px;
+    }
+
+    .loading div {
+      position: absolute;
+      top: 9px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #faff00;
+      animation-timing-function: cubic-bezier(0, 1, 1, 0);
+    }
+
+    .loading div:nth-child(1) {
+      left: 8px;
+      animation: loading1 0.6s infinite;
+    }
+
+    .loading div:nth-child(2) {
+      left: 8px;
+      animation: loading2 0.6s infinite;
+    }
+
+    .loading div:nth-child(3) {
+      left: 32px;
+      animation: loading2 0.6s infinite;
+    }
+
+    .loading div:nth-child(4) {
+      left: 56px;
+      animation: loading3 0.6s infinite;
+    }
+
+    @keyframes loading1 {
+      0% {
+        transform: scale(0);
+      }
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    @keyframes loading3 {
+      0% {
+        transform: scale(1);
+      }
+      100% {
+        transform: scale(0);
+      }
+    }
+
+    @keyframes loading2 {
+      0% {
+        transform: translate(0, 0);
+      }
+      100% {
+        transform: translate(24px, 0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="hudOverlay"></div>
+  <div class="glow-effect"></div>
+  
+  <div class="container">
+    <div id="header">SOOT</div>
+    
+    <button id="loginButton">
+      <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/google/google-original.svg" alt="Google logo">
+      LOGIN WITH GOOGLE
+    </button>
+    
+    <div id="statusMessage"></div>
+  </div>
+
+  <script>
+    // Configuration
+    const CLIENT_ID = '280774463128-47qih9bnnntkb2m26rsmqqjk87fd7onq.apps.googleusercontent.com'; // Replace with your actual Google client ID
+    const REDIRECT_URI = `http://localhost:8000/callback.html`;
+    const API_BASE_URL = 'http://localhost:8000'; // Update with your actual backend URL
+    
+    // DOM elements
+    const loginButton = document.getElementById('loginButton');
+    const statusMessage = document.getElementById('statusMessage');
+    
+    // Check if we already have an authentication token
+    function checkExistingAuth() {
+      const token = localStorage.getItem('soot_auth_token');
+      const expiry = localStorage.getItem('soot_token_expiry');
+      
+      if (token && expiry) {
+        // Check if token is still valid (with 5 minute buffer)
+        const now = new Date().getTime();
+        const expiryTime = parseInt(expiry, 10);
+        
+        if (now < expiryTime - 300000) { // 5 minutes buffer
+          // Token is still valid, redirect to main app
+          setStatusMessage('Authentication found, redirecting...');
+          setTimeout(() => {
+            window.location.href = 'index.html';
+          }, 1000);
+          return true;
+        } else {
+          // Token expired or about to expire, clear it
+          localStorage.removeItem('soot_auth_token');
+          localStorage.removeItem('soot_token_expiry');
+        }
+      }
+      
+      return false;
+    }
+    
+    // Initialize Google OAuth flow
+    function initiateGoogleLogin() {
+      setStatusMessage('Connecting to Google...');
+      
+      // Set up Google OAuth parameters
+      const googleAuthUrl = 'https://accounts.google.com/o/oauth2/v2/auth';
+      const params = new URLSearchParams({
+        client_id: CLIENT_ID,
+        redirect_uri: REDIRECT_URI,
+        response_type: 'code',
+        scope: 'email profile',
+        access_type: 'offline',
+        prompt: 'consent'
+      });
+      
+      // Redirect to Google's authorization page
+      window.location.href = `${googleAuthUrl}?${params.toString()}`;
+    }
+    
+    // Helper to set status message
+    function setStatusMessage(message, isLoading = false) {
+      if (isLoading) {
+        statusMessage.innerHTML = `
+          <div class="loading">
+            <div></div><div></div><div></div><div></div>
+          </div>
+          ${message}
+        `;
+      } else {
+        statusMessage.textContent = message;
+      }
+    }
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      // Check if we already have a valid token
+      if (!checkExistingAuth()) {
+        // No valid token, show login button
+        loginButton.addEventListener('click', initiateGoogleLogin);
+      }
+    });
+  </script>
+</body>
+</html>
